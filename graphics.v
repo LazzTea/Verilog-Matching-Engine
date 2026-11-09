@@ -7,15 +7,19 @@ module graphics #(
     parameter V_DISPLAY = 480,
     parameter V_FRONT = 10,
     parameter V_SYNC = 2,
-    parameter V_BACK = 33
+    parameter V_BACK = 33,
+    parameter LIST_ROWS = 6
 )(
     // 100 MHz board clock and active-high reset.
     input wire clk,
     input wire rst,
 
 
-    //Mock List
-    input reg [7:0] order_list [0:ORDER_LIST_WIDTH-1],
+    // Packed mock rows: row 0 occupies the least-significant bits.
+    input wire [LIST_ROWS-1:0] mock_valid,
+    input wire [LIST_ROWS-1:0] mock_is_bid,
+    input wire [LIST_ROWS*16-1:0] mock_price_bcd,
+    input wire [LIST_ROWS*12-1:0] mock_quantity_bcd,
 
 
     // VGA synchronization, current pixel coordinates, and active-video flag.
@@ -39,6 +43,12 @@ module graphics #(
     parameter PRICE_LABEL_X = 8;
     parameter QUANTITY_LABEL_X = 88;
     parameter LABEL_Y = 16;
+    parameter LIST_TOP = 48;
+    parameter LIST_ROW_HEIGHT = 64;
+    parameter PRICE_VALUE_X = 8;
+    parameter QUANTITY_VALUE_X = 88;
+    parameter VALUE_TOP = 24;
+    parameter TEXT_SCALE = 2;
 
     // Five-by-seven glyphs: each inner row case selects a scanline, MSB first.
     function [4:0] glyph_row;
@@ -280,15 +290,45 @@ module graphics #(
         end
     endfunction
 
+    wire [9:0] list_y = y - LIST_TOP;
+    wire [2:0] selected_row = list_y / LIST_ROW_HEIGHT;
+    wire [5:0] row_y = list_y % LIST_ROW_HEIGHT;
+    wire in_list_rows = y >= LIST_TOP &&
+                        y < LIST_TOP + LIST_ROWS * LIST_ROW_HEIGHT;
+    wire row_valid = in_list_rows ? mock_valid[selected_row] : 1'b0;
+    wire [15:0] selected_price_bcd = mock_price_bcd >> (selected_row * 16);
+    wire [11:0] selected_quantity_bcd = mock_quantity_bcd >> (selected_row * 12);
+
+    wire [2:0] price_digit_index = (x - PRICE_VALUE_X) / (6 * TEXT_SCALE);
+    wire [2:0] quantity_digit_index = (x - QUANTITY_VALUE_X) / (6 * TEXT_SCALE);
+    wire [2:0] price_column = ((x - PRICE_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+    wire [2:0] quantity_column = ((x - QUANTITY_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+    wire [2:0] digit_row = (row_y - VALUE_TOP) / TEXT_SCALE;
+    wire [3:0] price_digit = selected_price_bcd >> ((3 - price_digit_index) * 4);
+    wire [3:0] quantity_digit = selected_quantity_bcd >> ((2 - quantity_digit_index) * 4);
+    wire [4:0] price_bitmap = glyph_row(8'h30 + price_digit, digit_row);
+    wire [4:0] quantity_bitmap = glyph_row(8'h30 + quantity_digit, digit_row);
+    wire price_pixel = row_valid && x >= PRICE_VALUE_X &&
+                       x < PRICE_VALUE_X + 4 * 6 * TEXT_SCALE &&
+                       row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
+                       price_digit_index < 4 && price_column < 5 &&
+                       glyph_pixel(price_bitmap, price_column);
+    wire quantity_pixel = row_valid && x >= QUANTITY_VALUE_X &&
+                          x < QUANTITY_VALUE_X + 3 * 6 * TEXT_SCALE &&
+                          row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
+                          quantity_digit_index < 3 && quantity_column < 5 &&
+                          glyph_pixel(quantity_bitmap, quantity_column);
+
     reg [7:0] label_character;
     reg [2:0] label_column;
     always @(*) begin
         label_character = 8'h00;
         label_column = 3'd0;
-        if (y >= LABEL_Y && y < LABEL_Y + 7) begin
-            if (x >= PRICE_LABEL_X && x < PRICE_LABEL_X + 30) begin
-                label_column = (x - PRICE_LABEL_X) % 6;
-                case ((x - PRICE_LABEL_X) / 6)
+        if (y >= LABEL_Y && y < LABEL_Y + 7 * TEXT_SCALE) begin
+            if (x >= PRICE_LABEL_X &&
+                x < PRICE_LABEL_X + 5 * 6 * TEXT_SCALE) begin
+                label_column = ((x - PRICE_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+                case ((x - PRICE_LABEL_X) / (6 * TEXT_SCALE))
                     // Character positions 0 through 4 spell PRICE.
                     0: label_character = 8'h50;
                     1: label_character = 8'h52;
@@ -297,9 +337,10 @@ module graphics #(
                     4: label_character = 8'h45;
                     default: label_character = 8'h00;
                 endcase
-            end else if (x >= QUANTITY_LABEL_X && x < QUANTITY_LABEL_X + 18) begin
-                label_column = (x - QUANTITY_LABEL_X) % 6;
-                case ((x - QUANTITY_LABEL_X) / 6)
+            end else if (x >= QUANTITY_LABEL_X &&
+                         x < QUANTITY_LABEL_X + 3 * 6 * TEXT_SCALE) begin
+                label_column = ((x - QUANTITY_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+                case ((x - QUANTITY_LABEL_X) / (6 * TEXT_SCALE))
                     // Character positions 0 through 2 spell QTY.
                     0: label_character = 8'h51;
                     1: label_character = 8'h54;
@@ -310,7 +351,8 @@ module graphics #(
         end
     end
 
-    wire [4:0] label_bitmap = glyph_row(label_character, y - LABEL_Y);
+    wire [2:0] label_row = (y - LABEL_Y) / TEXT_SCALE;
+    wire [4:0] label_bitmap = glyph_row(label_character, label_row);
     wire label_pixel = glyph_pixel(label_bitmap, label_column);
 
     // Divide the board clock by four to advance one pixel at 25 MHz.
@@ -372,6 +414,22 @@ module graphics #(
                     red = 4'hb;
                     green = 4'hd;
                     blue = 4'hf;
+                end else if (price_pixel && mock_is_bid[selected_row]) begin
+                    red = 4'h3;
+                    green = 4'hf;
+                    blue = 4'h8;
+                end else if (price_pixel) begin
+                    red = 4'hf;
+                    green = 4'h5;
+                    blue = 4'h5;
+                end else if (quantity_pixel) begin
+                    red = 4'hb;
+                    green = 4'hd;
+                    blue = 4'hf;
+                end else if (in_list_rows && row_y == 0) begin
+                    red = 4'h3;
+                    green = 4'h5;
+                    blue = 4'h8;
                 end
             end else if (y < GRAPH_HEIGHT) begin
                 red = 4'h1;
