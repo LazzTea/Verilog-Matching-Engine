@@ -49,6 +49,11 @@ module graphics #(
     parameter QUANTITY_VALUE_X = 88;
     parameter VALUE_TOP = 24;
     parameter TEXT_SCALE = 2;
+    parameter GRAPH_AXIS_LEFT = ORDER_LIST_WIDTH + 20;
+    parameter GRAPH_AXIS_RIGHT = H_DISPLAY - 20;
+    parameter GRAPH_AXIS_TOP = 20;
+    parameter GRAPH_AXIS_BOTTOM = GRAPH_HEIGHT - 20;
+    parameter GRAPH_AXIS_WIDTH = 2;
 
     // Five-by-seven glyphs: each inner row case selects a scanline, MSB first.
     function [4:0] glyph_row;
@@ -355,6 +360,13 @@ module graphics #(
     wire [4:0] label_bitmap = glyph_row(label_character, label_row);
     wire label_pixel = glyph_pixel(label_bitmap, label_column);
 
+    // Two-pixel L-shaped axes inside the graph panel.
+    wire graph_axis_pixel =
+        ((x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH) &&
+         (y >= GRAPH_AXIS_TOP && y < GRAPH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH)) ||
+        ((y >= GRAPH_AXIS_BOTTOM && y < GRAPH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH) &&
+         (x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_RIGHT));
+
     // Divide the board clock by four to advance one pixel at 25 MHz.
     reg [1:0] pixel_divider;
     wire pixel_tick = (pixel_divider == 2'b11);
@@ -393,11 +405,13 @@ module graphics #(
 
     // Draw the order list, graph, and order-entry panels with separator lines.
     always @(*) begin
+        // Pixels outside the active 640x480 area are black.
         red = 4'h0;
         green = 4'h0;
         blue = 4'h0;
 
         if (video_on) begin
+            // Divider lines separating the three display panels.
             if ((x >= ORDER_LIST_WIDTH &&
                  x < ORDER_LIST_WIDTH + SEPARATOR_WIDTH) ||
                 (x >= ORDER_LIST_WIDTH &&
@@ -407,6 +421,7 @@ module graphics #(
                 green = 4'h7;
                 blue = 4'h9;
             end else if (x < ORDER_LIST_WIDTH) begin
+                // Left panel: order-list background, labels, and mock values.
                 red = 4'h1;
                 green = 4'h2;
                 blue = 4'h4;
@@ -432,10 +447,18 @@ module graphics #(
                     blue = 4'h8;
                 end
             end else if (y < GRAPH_HEIGHT) begin
-                red = 4'h1;
-                green = 4'h2;
-                blue = 4'h3;
+                // Upper-right panel: graph background and its L-shaped axes.
+                if (graph_axis_pixel) begin
+                    red = 4'h8;
+                    green = 4'ha;
+                    blue = 4'hc;
+                end else begin
+                    red = 4'h1;
+                    green = 4'h2;
+                    blue = 4'h3;
+                end
             end else begin
+                // Lower-right panel: order-entry background.
                 red = 4'h2;
                 green = 4'h3;
                 blue = 4'h5;
