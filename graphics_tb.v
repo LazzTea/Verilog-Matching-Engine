@@ -26,7 +26,7 @@ module graphics_tb;
     reg [9:0] last_y;
 
     graphics #(
-        .GRAPH_POINTS(5),
+        .GRAPH_POINTS(10),
         .GRAPH_PRICE_MIN(0),
         .GRAPH_PRICE_MAX(1000)
     ) dut (
@@ -37,7 +37,7 @@ module graphics_tb;
         .mock_price_bcd(mock_price_bcd),
         .mock_quantity_bcd(mock_quantity_bcd),
         .mock_symbol(mock_symbol),
-        .mock_graph_prices({10'd600, 10'd250, 10'd750, 10'd500, 10'd250}),
+        .mock_graph_prices({10'd600, 10'd250, 10'd750, 10'd500, 10'd250, 10'd1000, 10'd0, 10'd100, 10'd900, 10'd400}),
         .hsync(hsync),
         .vsync(vsync),
         .x(x),
@@ -155,23 +155,21 @@ module graphics_tb;
         check_rgb(10'd146, 10'd16, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd220, 10'd20, 4'h8, 4'ha, 4'hc);
         check_rgb(10'd222, 10'd20, 4'h1, 4'h2, 4'h3);
+        check_rgb(10'd398, 10'd22, 4'h3, 4'hf, 4'h8);
         check_rgb(10'd18, 10'd72, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd30, 10'd72, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd42, 10'd72, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd52, 10'd72, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd84, 10'd72, 4'h3, 4'hf, 4'h8);
         check_rgb(10'd148, 10'd72, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd421, 10'd102, 4'h3, 4'hf, 4'h8);
+        check_rgb(10'd531, 10'd102, 4'h3, 4'hf, 4'h8);
+        check_rgb(10'd244, 10'd132, 4'h3, 4'hf, 4'h8);
         check_rgb(10'd16, 10'd136, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd619, 10'd149, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd321, 10'd182, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd480, 10'd196, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd480, 10'd197, 4'h3, 4'hf, 4'h8);
         check_rgb(10'd18, 10'd200, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd64, 10'd200, 4'h1, 4'h2, 4'h4);
         check_rgb(10'd210, 10'd200, 4'h1, 4'h2, 4'h3);
-        check_rgb(10'd222, 10'd260, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd520, 10'd260, 4'h3, 4'hf, 4'h8);
+        check_rgb(10'd222, 10'd213, 4'h3, 4'hf, 4'h8);
         check_rgb(10'd18, 10'd264, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd200, 10'd360, 4'h5, 4'h7, 4'h9);
         check_rgb(10'd242, 10'd380, 4'hb, 4'hd, 4'hf);
