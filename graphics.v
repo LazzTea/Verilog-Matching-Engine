@@ -8,7 +8,10 @@ module graphics #(
     parameter V_FRONT = 10,
     parameter V_SYNC = 2,
     parameter V_BACK = 33,
-    parameter LIST_ROWS = 6
+    parameter LIST_ROWS = 6,
+    parameter GRAPH_POINTS = 32,
+    parameter GRAPH_PRICE_MIN = 0,
+    parameter GRAPH_PRICE_MAX = 1023
 )(
     // 100 MHz board clock and active-high reset.
     input wire clk,
@@ -20,6 +23,9 @@ module graphics #(
     input wire [LIST_ROWS-1:0] mock_is_bid,
     input wire [LIST_ROWS*16-1:0] mock_price_bcd,
     input wire [LIST_ROWS*12-1:0] mock_quantity_bcd,
+    input wire [LIST_ROWS*32-1:0] mock_symbol,
+    // Sample 0 is the oldest price and occupies the least-significant bits.
+    input wire [GRAPH_POINTS*10-1:0] mock_graph_prices,
 
 
     // VGA synchronization, current pixel coordinates, and active-video flag.
@@ -36,17 +42,19 @@ module graphics #(
     // Full scan dimensions and procedural layout sizes.
     parameter H_TOTAL = H_DISPLAY + H_FRONT + H_SYNC + H_BACK;
     parameter V_TOTAL = V_DISPLAY + V_FRONT + V_SYNC + V_BACK;
-    parameter ORDER_LIST_WIDTH = H_DISPLAY / 4;
+    parameter ORDER_LIST_WIDTH = (H_DISPLAY * 5) / 16;
     parameter GRAPH_HEIGHT = (V_DISPLAY * 3) / 4;
     parameter SEPARATOR_WIDTH = 2;
     
-    parameter PRICE_LABEL_X = 8;
-    parameter QUANTITY_LABEL_X = 88;
+    parameter PRICE_LABEL_X = 74;
+    parameter QUANTITY_LABEL_X = 144;
+    parameter SYMBOL_LABEL_X = 22;
     parameter LABEL_Y = 16;
     parameter LIST_TOP = 48;
     parameter LIST_ROW_HEIGHT = 64;
-    parameter PRICE_VALUE_X = 8;
-    parameter QUANTITY_VALUE_X = 88;
+    parameter PRICE_VALUE_X = 80;
+    parameter QUANTITY_VALUE_X = 144;
+    parameter SYMBOL_VALUE_X = 16;
     parameter VALUE_TOP = 24;
     parameter TEXT_SCALE = 2;
     parameter GRAPH_AXIS_LEFT = ORDER_LIST_WIDTH + 20;
@@ -54,6 +62,13 @@ module graphics #(
     parameter GRAPH_AXIS_TOP = 20;
     parameter GRAPH_AXIS_BOTTOM = GRAPH_HEIGHT - 20;
     parameter GRAPH_AXIS_WIDTH = 2;
+    parameter ENTRY_LABEL_X = 240;
+    parameter ENTRY_LABEL_Y = 380;
+    parameter ENTRY_BAR_LEFT = 240;
+    parameter ENTRY_BAR_TOP = 408;
+    parameter ENTRY_BAR_RIGHT = 600;
+    parameter ENTRY_BAR_BOTTOM = 440;
+    parameter ENTRY_BAR_BORDER = 2;
 
     // Five-by-seven glyphs: each inner row case selects a scanline, MSB first.
     function [4:0] glyph_row;
@@ -303,16 +318,24 @@ module graphics #(
     wire row_valid = in_list_rows ? mock_valid[selected_row] : 1'b0;
     wire [15:0] selected_price_bcd = mock_price_bcd >> (selected_row * 16);
     wire [11:0] selected_quantity_bcd = mock_quantity_bcd >> (selected_row * 12);
+    wire [31:0] selected_symbol = mock_symbol >> (selected_row * 32);
 
     wire [2:0] price_digit_index = (x - PRICE_VALUE_X) / (6 * TEXT_SCALE);
     wire [2:0] quantity_digit_index = (x - QUANTITY_VALUE_X) / (6 * TEXT_SCALE);
+    wire [2:0] symbol_character_index =
+        (x - SYMBOL_VALUE_X) / (6 * TEXT_SCALE);
+    wire [2:0] symbol_column =
+        ((x - SYMBOL_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] price_column = ((x - PRICE_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] quantity_column = ((x - QUANTITY_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] digit_row = (row_y - VALUE_TOP) / TEXT_SCALE;
     wire [3:0] price_digit = selected_price_bcd >> ((3 - price_digit_index) * 4);
     wire [3:0] quantity_digit = selected_quantity_bcd >> ((2 - quantity_digit_index) * 4);
+    wire [7:0] symbol_character =
+        selected_symbol >> ((3 - symbol_character_index) * 8);
     wire [4:0] price_bitmap = glyph_row(8'h30 + price_digit, digit_row);
     wire [4:0] quantity_bitmap = glyph_row(8'h30 + quantity_digit, digit_row);
+    wire [4:0] symbol_bitmap = glyph_row(symbol_character, digit_row);
     wire price_pixel = row_valid && x >= PRICE_VALUE_X &&
                        x < PRICE_VALUE_X + 4 * 6 * TEXT_SCALE &&
                        row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
@@ -323,6 +346,11 @@ module graphics #(
                           row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
                           quantity_digit_index < 3 && quantity_column < 5 &&
                           glyph_pixel(quantity_bitmap, quantity_column);
+    wire symbol_pixel = row_valid && x >= SYMBOL_VALUE_X &&
+                        x < SYMBOL_VALUE_X + 4 * 6 * TEXT_SCALE &&
+                        row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
+                        symbol_character_index < 4 && symbol_column < 5 &&
+                        glyph_pixel(symbol_bitmap, symbol_column);
 
     reg [7:0] label_character;
     reg [2:0] label_column;
@@ -352,6 +380,15 @@ module graphics #(
                     2: label_character = 8'h59;
                     default: label_character = 8'h00;
                 endcase
+            end else if (x >= SYMBOL_LABEL_X &&
+                         x < SYMBOL_LABEL_X + 3 * 6 * TEXT_SCALE) begin
+                label_column = ((x - SYMBOL_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+                case ((x - SYMBOL_LABEL_X) / (6 * TEXT_SCALE))
+                    0: label_character = 8'h53;
+                    1: label_character = 8'h59;
+                    2: label_character = 8'h4d;
+                    default: label_character = 8'h00;
+                endcase
             end
         end
     end
@@ -360,12 +397,154 @@ module graphics #(
     wire [4:0] label_bitmap = glyph_row(label_character, label_row);
     wire label_pixel = glyph_pixel(label_bitmap, label_column);
 
+    reg [7:0] entry_label_character;
+    reg [2:0] entry_label_column;
+    always @(*) begin
+        entry_label_character = 8'h00;
+        entry_label_column = 3'd0;
+        if (x >= ENTRY_LABEL_X &&
+            x < ENTRY_LABEL_X + 11 * 6 * TEXT_SCALE &&
+            y >= ENTRY_LABEL_Y &&
+            y < ENTRY_LABEL_Y + 7 * TEXT_SCALE) begin
+            entry_label_column =
+                ((x - ENTRY_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+            case ((x - ENTRY_LABEL_X) / (6 * TEXT_SCALE))
+                0: entry_label_character = 8'h4f;
+                1: entry_label_character = 8'h52;
+                2: entry_label_character = 8'h44;
+                3: entry_label_character = 8'h45;
+                4: entry_label_character = 8'h52;
+                5: entry_label_character = 8'h20;
+                6: entry_label_character = 8'h45;
+                7: entry_label_character = 8'h4e;
+                8: entry_label_character = 8'h54;
+                9: entry_label_character = 8'h52;
+                10: entry_label_character = 8'h59;
+                default: entry_label_character = 8'h00;
+            endcase
+        end
+    end
+    wire [2:0] entry_label_row = (y - ENTRY_LABEL_Y) / TEXT_SCALE;
+    wire [4:0] entry_label_bitmap =
+        glyph_row(entry_label_character, entry_label_row);
+    wire entry_label_pixel =
+        glyph_pixel(entry_label_bitmap, entry_label_column);
+    wire entry_bar_border_pixel =
+        x >= ENTRY_BAR_LEFT && x < ENTRY_BAR_RIGHT &&
+        y >= ENTRY_BAR_TOP && y < ENTRY_BAR_BOTTOM &&
+        (x < ENTRY_BAR_LEFT + ENTRY_BAR_BORDER ||
+         x >= ENTRY_BAR_RIGHT - ENTRY_BAR_BORDER ||
+         y < ENTRY_BAR_TOP + ENTRY_BAR_BORDER ||
+         y >= ENTRY_BAR_BOTTOM - ENTRY_BAR_BORDER);
+
     // Two-pixel L-shaped axes inside the graph panel.
     wire graph_axis_pixel =
         ((x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH) &&
          (y >= GRAPH_AXIS_TOP && y < GRAPH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH)) ||
         ((y >= GRAPH_AXIS_BOTTOM && y < GRAPH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH) &&
          (x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_RIGHT));
+
+    integer graph_x_offset;
+    integer graph_span;
+    integer graph_scaled_x;
+    integer graph_segment_index;
+    integer graph_segment_progress;
+    integer graph_price_0;
+    integer graph_price_1;
+    integer graph_clamped_price_0;
+    integer graph_clamped_price_1;
+    integer graph_y_0;
+    integer graph_y_1;
+    integer graph_line_y;
+    integer graph_next_progress;
+    integer graph_next_y;
+    integer graph_low_y;
+    integer graph_high_y;
+    integer graph_plot_height;
+    reg graph_line_pixel;
+
+    // Interpolate between adjacent historical samples and map prices to the
+    // configured vertical range. Values outside that range are clipped.
+    always @(*) begin
+        graph_x_offset = 0;
+        graph_span = GRAPH_AXIS_RIGHT - GRAPH_AXIS_LEFT -
+                     GRAPH_AXIS_WIDTH - 1;
+        graph_scaled_x = 0;
+        graph_segment_index = 0;
+        graph_segment_progress = 0;
+        graph_price_0 = 0;
+        graph_price_1 = 0;
+        graph_clamped_price_0 = 0;
+        graph_clamped_price_1 = 0;
+        graph_y_0 = 0;
+        graph_y_1 = 0;
+        graph_line_y = 0;
+        graph_next_progress = 0;
+        graph_next_y = 0;
+        graph_low_y = 0;
+        graph_high_y = 0;
+        graph_plot_height = GRAPH_AXIS_BOTTOM - GRAPH_AXIS_TOP -
+                            GRAPH_AXIS_WIDTH - 1;
+        graph_line_pixel = 1'b0;
+
+        if (GRAPH_POINTS >= 2 &&
+            GRAPH_PRICE_MAX > GRAPH_PRICE_MIN &&
+            graph_span > 0 &&
+            x >= GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH &&
+            x < GRAPH_AXIS_RIGHT) begin
+            graph_x_offset = x - GRAPH_AXIS_LEFT - GRAPH_AXIS_WIDTH;
+            graph_scaled_x = graph_x_offset * (GRAPH_POINTS - 1);
+            graph_segment_index = graph_scaled_x / graph_span;
+            graph_segment_progress = graph_scaled_x % graph_span;
+            if (graph_segment_index >= GRAPH_POINTS - 1) begin
+                graph_segment_index = GRAPH_POINTS - 2;
+                graph_segment_progress = graph_span;
+            end
+
+            graph_price_0 =
+                (mock_graph_prices >> (graph_segment_index * 10)) & 10'h3ff;
+            graph_price_1 =
+                (mock_graph_prices >> ((graph_segment_index + 1) * 10)) &
+                10'h3ff;
+
+            graph_clamped_price_0 = graph_price_0;
+            graph_clamped_price_1 = graph_price_1;
+            if (graph_clamped_price_0 < GRAPH_PRICE_MIN)
+                graph_clamped_price_0 = GRAPH_PRICE_MIN;
+            else if (graph_clamped_price_0 > GRAPH_PRICE_MAX)
+                graph_clamped_price_0 = GRAPH_PRICE_MAX;
+            if (graph_clamped_price_1 < GRAPH_PRICE_MIN)
+                graph_clamped_price_1 = GRAPH_PRICE_MIN;
+            else if (graph_clamped_price_1 > GRAPH_PRICE_MAX)
+                graph_clamped_price_1 = GRAPH_PRICE_MAX;
+
+            graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
+                ((graph_clamped_price_0 - GRAPH_PRICE_MIN) *
+                 graph_plot_height) /
+                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+            graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
+                ((graph_clamped_price_1 - GRAPH_PRICE_MIN) *
+                 graph_plot_height) /
+                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+            graph_line_y = graph_y_0 +
+                ((graph_y_1 - graph_y_0) * graph_segment_progress) /
+                graph_span;
+            graph_next_progress = graph_segment_progress + GRAPH_POINTS - 1;
+            if (graph_next_progress > graph_span)
+                graph_next_progress = graph_span;
+            graph_next_y = graph_y_0 +
+                ((graph_y_1 - graph_y_0) * graph_next_progress) /
+                graph_span;
+            if (graph_line_y < graph_next_y) begin
+                graph_low_y = graph_line_y;
+                graph_high_y = graph_next_y;
+            end else begin
+                graph_low_y = graph_next_y;
+                graph_high_y = graph_line_y;
+            end
+            graph_line_pixel = y >= graph_low_y && y <= graph_high_y;
+        end
+    end
 
     // Divide the board clock by four to advance one pixel at 25 MHz.
     reg [1:0] pixel_divider;
@@ -441,6 +620,10 @@ module graphics #(
                     red = 4'hb;
                     green = 4'hd;
                     blue = 4'hf;
+                end else if (symbol_pixel) begin
+                    red = 4'hb;
+                    green = 4'hd;
+                    blue = 4'hf;
                 end else if (in_list_rows && row_y == 0) begin
                     red = 4'h3;
                     green = 4'h5;
@@ -452,6 +635,10 @@ module graphics #(
                     red = 4'h8;
                     green = 4'ha;
                     blue = 4'hc;
+                end else if (graph_line_pixel) begin
+                    red = 4'h3;
+                    green = 4'hf;
+                    blue = 4'h8;
                 end else begin
                     red = 4'h1;
                     green = 4'h2;
@@ -462,6 +649,22 @@ module graphics #(
                 red = 4'h2;
                 green = 4'h3;
                 blue = 4'h5;
+                if (entry_bar_border_pixel) begin
+                    red = 4'h8;
+                    green = 4'ha;
+                    blue = 4'hc;
+                end else if (x >= ENTRY_BAR_LEFT &&
+                             x < ENTRY_BAR_RIGHT &&
+                             y >= ENTRY_BAR_TOP &&
+                             y < ENTRY_BAR_BOTTOM) begin
+                    red = 4'h1;
+                    green = 4'h2;
+                    blue = 4'h4;
+                end else if (entry_label_pixel) begin
+                    red = 4'hb;
+                    green = 4'hd;
+                    blue = 4'hf;
+                end
             end
         end
     end
