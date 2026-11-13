@@ -7,6 +7,7 @@ module graphics_tb;
     reg [5:0] mock_is_bid;
     reg [95:0] mock_price_bcd;
     reg [71:0] mock_quantity_bcd;
+    reg [29:0] mock_symbol;
 
     wire hsync;
     wire vsync;
@@ -31,6 +32,7 @@ module graphics_tb;
         .mock_is_bid(mock_is_bid),
         .mock_price_bcd(mock_price_bcd),
         .mock_quantity_bcd(mock_quantity_bcd),
+        .mock_symbol(mock_symbol),
         .hsync(hsync),
         .vsync(vsync),
         .x(x),
@@ -125,6 +127,7 @@ module graphics_tb;
             12'h075, 12'h150, 12'h042,
             12'h200, 12'h085, 12'h120
         };
+        mock_symbol = {5'd25, 5'd4, 5'd3, 5'd26, 5'd1, 5'd0};
 
         repeat (4) @(posedge clk);
         #1;
@@ -140,15 +143,20 @@ module graphics_tb;
         check_hsync(10'd656, 1'b0);
         check_hsync(10'd752, 1'b1);
 
-        check_rgb(10'd8, 10'd16, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd90, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd10, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd54, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd122, 10'd16, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd180, 10'd20, 4'h8, 4'ha, 4'hc);
         check_rgb(10'd182, 10'd20, 4'h1, 4'h2, 4'h3);
-        check_rgb(10'd12, 10'd72, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd92, 10'd72, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd10, 10'd72, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd56, 10'd72, 4'h3, 4'hf, 4'h8);
+        check_rgb(10'd124, 10'd72, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd10, 10'd136, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd10, 10'd200, 4'h1, 4'h2, 4'h4);
         check_rgb(10'd64, 10'd200, 4'h1, 4'h2, 4'h4);
         check_rgb(10'd160, 10'd200, 4'h5, 4'h7, 4'h9);
         check_rgb(10'd200, 10'd360, 4'h5, 4'h7, 4'h9);
+        check_rgb(10'd10, 10'd392, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd200, 10'd400, 4'h2, 4'h3, 4'h5);
 
         if (failures == 0)

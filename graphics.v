@@ -20,6 +20,7 @@ module graphics #(
     input wire [LIST_ROWS-1:0] mock_is_bid,
     input wire [LIST_ROWS*16-1:0] mock_price_bcd,
     input wire [LIST_ROWS*12-1:0] mock_quantity_bcd,
+    input wire [LIST_ROWS*5-1:0] mock_symbol,
 
 
     // VGA synchronization, current pixel coordinates, and active-video flag.
@@ -40,13 +41,15 @@ module graphics #(
     parameter GRAPH_HEIGHT = (V_DISPLAY * 3) / 4;
     parameter SEPARATOR_WIDTH = 2;
     
-    parameter PRICE_LABEL_X = 8;
-    parameter QUANTITY_LABEL_X = 88;
+    parameter PRICE_LABEL_X = 52;
+    parameter QUANTITY_LABEL_X = 120;
+    parameter SYMBOL_LABEL_X = 8;
     parameter LABEL_Y = 16;
     parameter LIST_TOP = 48;
     parameter LIST_ROW_HEIGHT = 64;
-    parameter PRICE_VALUE_X = 8;
-    parameter QUANTITY_VALUE_X = 88;
+    parameter PRICE_VALUE_X = 52;
+    parameter QUANTITY_VALUE_X = 120;
+    parameter SYMBOL_VALUE_X = 8;
     parameter VALUE_TOP = 24;
     parameter TEXT_SCALE = 2;
     parameter GRAPH_AXIS_LEFT = ORDER_LIST_WIDTH + 20;
@@ -303,16 +306,21 @@ module graphics #(
     wire row_valid = in_list_rows ? mock_valid[selected_row] : 1'b0;
     wire [15:0] selected_price_bcd = mock_price_bcd >> (selected_row * 16);
     wire [11:0] selected_quantity_bcd = mock_quantity_bcd >> (selected_row * 12);
+    wire [4:0] selected_symbol = mock_symbol >> (selected_row * 5);
 
     wire [2:0] price_digit_index = (x - PRICE_VALUE_X) / (6 * TEXT_SCALE);
     wire [2:0] quantity_digit_index = (x - QUANTITY_VALUE_X) / (6 * TEXT_SCALE);
+    wire [2:0] symbol_column = ((x - SYMBOL_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] price_column = ((x - PRICE_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] quantity_column = ((x - QUANTITY_VALUE_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
     wire [2:0] digit_row = (row_y - VALUE_TOP) / TEXT_SCALE;
     wire [3:0] price_digit = selected_price_bcd >> ((3 - price_digit_index) * 4);
     wire [3:0] quantity_digit = selected_quantity_bcd >> ((2 - quantity_digit_index) * 4);
+    wire [7:0] symbol_character = selected_symbol <= 5'd25 ?
+                                  8'h41 + {3'b000, selected_symbol} : 8'h00;
     wire [4:0] price_bitmap = glyph_row(8'h30 + price_digit, digit_row);
     wire [4:0] quantity_bitmap = glyph_row(8'h30 + quantity_digit, digit_row);
+    wire [4:0] symbol_bitmap = glyph_row(symbol_character, digit_row);
     wire price_pixel = row_valid && x >= PRICE_VALUE_X &&
                        x < PRICE_VALUE_X + 4 * 6 * TEXT_SCALE &&
                        row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
@@ -323,6 +331,10 @@ module graphics #(
                           row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
                           quantity_digit_index < 3 && quantity_column < 5 &&
                           glyph_pixel(quantity_bitmap, quantity_column);
+    wire symbol_pixel = row_valid && x >= SYMBOL_VALUE_X &&
+                        x < SYMBOL_VALUE_X + 6 * TEXT_SCALE &&
+                        row_y >= VALUE_TOP && row_y < VALUE_TOP + 7 * TEXT_SCALE &&
+                        symbol_column < 5 && glyph_pixel(symbol_bitmap, symbol_column);
 
     reg [7:0] label_character;
     reg [2:0] label_column;
@@ -350,6 +362,15 @@ module graphics #(
                     0: label_character = 8'h51;
                     1: label_character = 8'h54;
                     2: label_character = 8'h59;
+                    default: label_character = 8'h00;
+                endcase
+            end else if (x >= SYMBOL_LABEL_X &&
+                         x < SYMBOL_LABEL_X + 3 * 6 * TEXT_SCALE) begin
+                label_column = ((x - SYMBOL_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+                case ((x - SYMBOL_LABEL_X) / (6 * TEXT_SCALE))
+                    0: label_character = 8'h53;
+                    1: label_character = 8'h59;
+                    2: label_character = 8'h4d;
                     default: label_character = 8'h00;
                 endcase
             end
@@ -438,6 +459,10 @@ module graphics #(
                     green = 4'h5;
                     blue = 4'h5;
                 end else if (quantity_pixel) begin
+                    red = 4'hb;
+                    green = 4'hd;
+                    blue = 4'hf;
+                end else if (symbol_pixel) begin
                     red = 4'hb;
                     green = 4'hd;
                     blue = 4'hf;
