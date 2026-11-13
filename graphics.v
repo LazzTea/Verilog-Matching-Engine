@@ -41,15 +41,15 @@ module graphics #(
     parameter GRAPH_HEIGHT = (V_DISPLAY * 3) / 4;
     parameter SEPARATOR_WIDTH = 2;
     
-    parameter PRICE_LABEL_X = 52;
-    parameter QUANTITY_LABEL_X = 120;
-    parameter SYMBOL_LABEL_X = 8;
+    parameter PRICE_LABEL_X = 42;
+    parameter QUANTITY_LABEL_X = 108;
+    parameter SYMBOL_LABEL_X = 4;
     parameter LABEL_Y = 16;
     parameter LIST_TOP = 48;
     parameter LIST_ROW_HEIGHT = 64;
-    parameter PRICE_VALUE_X = 52;
-    parameter QUANTITY_VALUE_X = 120;
-    parameter SYMBOL_VALUE_X = 8;
+    parameter PRICE_VALUE_X = 44;
+    parameter QUANTITY_VALUE_X = 108;
+    parameter SYMBOL_VALUE_X = 16;
     parameter VALUE_TOP = 24;
     parameter TEXT_SCALE = 2;
     parameter GRAPH_AXIS_LEFT = ORDER_LIST_WIDTH + 20;
@@ -57,6 +57,13 @@ module graphics #(
     parameter GRAPH_AXIS_TOP = 20;
     parameter GRAPH_AXIS_BOTTOM = GRAPH_HEIGHT - 20;
     parameter GRAPH_AXIS_WIDTH = 2;
+    parameter ENTRY_LABEL_X = 200;
+    parameter ENTRY_LABEL_Y = 380;
+    parameter ENTRY_BAR_LEFT = 200;
+    parameter ENTRY_BAR_TOP = 408;
+    parameter ENTRY_BAR_RIGHT = 600;
+    parameter ENTRY_BAR_BOTTOM = 440;
+    parameter ENTRY_BAR_BORDER = 2;
 
     // Five-by-seven glyphs: each inner row case selects a scanline, MSB first.
     function [4:0] glyph_row;
@@ -381,6 +388,46 @@ module graphics #(
     wire [4:0] label_bitmap = glyph_row(label_character, label_row);
     wire label_pixel = glyph_pixel(label_bitmap, label_column);
 
+    reg [7:0] entry_label_character;
+    reg [2:0] entry_label_column;
+    always @(*) begin
+        entry_label_character = 8'h00;
+        entry_label_column = 3'd0;
+        if (x >= ENTRY_LABEL_X &&
+            x < ENTRY_LABEL_X + 11 * 6 * TEXT_SCALE &&
+            y >= ENTRY_LABEL_Y &&
+            y < ENTRY_LABEL_Y + 7 * TEXT_SCALE) begin
+            entry_label_column =
+                ((x - ENTRY_LABEL_X) % (6 * TEXT_SCALE)) / TEXT_SCALE;
+            case ((x - ENTRY_LABEL_X) / (6 * TEXT_SCALE))
+                0: entry_label_character = 8'h4f;
+                1: entry_label_character = 8'h52;
+                2: entry_label_character = 8'h44;
+                3: entry_label_character = 8'h45;
+                4: entry_label_character = 8'h52;
+                5: entry_label_character = 8'h20;
+                6: entry_label_character = 8'h45;
+                7: entry_label_character = 8'h4e;
+                8: entry_label_character = 8'h54;
+                9: entry_label_character = 8'h52;
+                10: entry_label_character = 8'h59;
+                default: entry_label_character = 8'h00;
+            endcase
+        end
+    end
+    wire [2:0] entry_label_row = (y - ENTRY_LABEL_Y) / TEXT_SCALE;
+    wire [4:0] entry_label_bitmap =
+        glyph_row(entry_label_character, entry_label_row);
+    wire entry_label_pixel =
+        glyph_pixel(entry_label_bitmap, entry_label_column);
+    wire entry_bar_border_pixel =
+        x >= ENTRY_BAR_LEFT && x < ENTRY_BAR_RIGHT &&
+        y >= ENTRY_BAR_TOP && y < ENTRY_BAR_BOTTOM &&
+        (x < ENTRY_BAR_LEFT + ENTRY_BAR_BORDER ||
+         x >= ENTRY_BAR_RIGHT - ENTRY_BAR_BORDER ||
+         y < ENTRY_BAR_TOP + ENTRY_BAR_BORDER ||
+         y >= ENTRY_BAR_BOTTOM - ENTRY_BAR_BORDER);
+
     // Two-pixel L-shaped axes inside the graph panel.
     wire graph_axis_pixel =
         ((x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH) &&
@@ -487,6 +534,22 @@ module graphics #(
                 red = 4'h2;
                 green = 4'h3;
                 blue = 4'h5;
+                if (entry_bar_border_pixel) begin
+                    red = 4'h8;
+                    green = 4'ha;
+                    blue = 4'hc;
+                end else if (x >= ENTRY_BAR_LEFT &&
+                             x < ENTRY_BAR_RIGHT &&
+                             y >= ENTRY_BAR_TOP &&
+                             y < ENTRY_BAR_BOTTOM) begin
+                    red = 4'h1;
+                    green = 4'h2;
+                    blue = 4'h4;
+                end else if (entry_label_pixel) begin
+                    red = 4'hb;
+                    green = 4'hd;
+                    blue = 4'hf;
+                end
             end
         end
     end

@@ -143,21 +143,25 @@ module graphics_tb;
         check_hsync(10'd656, 1'b0);
         check_hsync(10'd752, 1'b1);
 
-        check_rgb(10'd10, 10'd16, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd54, 10'd16, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd122, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd6, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd44, 10'd16, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd110, 10'd16, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd180, 10'd20, 4'h8, 4'ha, 4'hc);
         check_rgb(10'd182, 10'd20, 4'h1, 4'h2, 4'h3);
-        check_rgb(10'd10, 10'd72, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd56, 10'd72, 4'h3, 4'hf, 4'h8);
-        check_rgb(10'd124, 10'd72, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd10, 10'd136, 4'hb, 4'hd, 4'hf);
-        check_rgb(10'd10, 10'd200, 4'h1, 4'h2, 4'h4);
+        check_rgb(10'd20, 10'd72, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd48, 10'd72, 4'h3, 4'hf, 4'h8);
+        check_rgb(10'd112, 10'd72, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd16, 10'd136, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd16, 10'd200, 4'h1, 4'h2, 4'h4);
         check_rgb(10'd64, 10'd200, 4'h1, 4'h2, 4'h4);
         check_rgb(10'd160, 10'd200, 4'h5, 4'h7, 4'h9);
+        check_rgb(10'd16, 10'd264, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd200, 10'd360, 4'h5, 4'h7, 4'h9);
-        check_rgb(10'd10, 10'd392, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd202, 10'd380, 4'hb, 4'hd, 4'hf);
+        check_rgb(10'd16, 10'd392, 4'hb, 4'hd, 4'hf);
         check_rgb(10'd200, 10'd400, 4'h2, 4'h3, 4'h5);
+        check_rgb(10'd200, 10'd410, 4'h8, 4'ha, 4'hc);
+        check_rgb(10'd205, 10'd420, 4'h1, 4'h2, 4'h4);
 
         if (failures == 0)
             $display("ALL GRAPHICS TESTS PASSED");
