@@ -444,31 +444,49 @@ module graphics #(
         ((y >= GRAPH_AXIS_BOTTOM && y < GRAPH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH) &&
          (x >= GRAPH_AXIS_LEFT && x < GRAPH_AXIS_RIGHT));
 
-    integer graph_x_offset;
-    integer graph_span;
-    integer graph_scaled_x;
-    integer graph_segment_index;
-    integer graph_segment_progress;
-    integer graph_price_0;
-    integer graph_price_1;
-    integer graph_clamped_price_0;
-    integer graph_clamped_price_1;
-    integer graph_y_0;
-    integer graph_y_1;
-    integer graph_line_y;
-    integer graph_next_progress;
-    integer graph_next_y;
-    integer graph_low_y;
-    integer graph_high_y;
-    integer graph_plot_height;
+    localparam GRAPH_SPAN = GRAPH_AXIS_RIGHT - GRAPH_AXIS_LEFT -
+                            GRAPH_AXIS_WIDTH - 1;
+    localparam GRAPH_PLOT_HEIGHT = GRAPH_AXIS_BOTTOM - GRAPH_AXIS_TOP -
+                                   GRAPH_AXIS_WIDTH - 1;
+    localparam GRAPH_X_OFFSET_BITS =
+        (GRAPH_SPAN > 0) ? $clog2(GRAPH_SPAN + 1) : 1;
+    localparam GRAPH_SEGMENT_BITS =
+        (GRAPH_POINTS > 1) ? $clog2(GRAPH_POINTS) : 1;
+    localparam GRAPH_SCALED_X_BITS =
+        (GRAPH_SPAN > 0 && GRAPH_POINTS > 1) ?
+        $clog2(GRAPH_SPAN * (GRAPH_POINTS - 1) + 1) : 1;
+
+    reg [GRAPH_X_OFFSET_BITS-1:0] graph_x_offset;
+    reg [GRAPH_SCALED_X_BITS-1:0] graph_scaled_x;
+    reg [GRAPH_SEGMENT_BITS-1:0] graph_segment_index;
+    reg [GRAPH_X_OFFSET_BITS-1:0] graph_segment_progress;
+    reg [10:0] graph_price_0;
+    reg [10:0] graph_price_1;
+    reg [10:0] graph_clamped_price_0;
+    reg [10:0] graph_clamped_price_1;
+    reg [10:0] graph_price_delta_0;
+    reg [10:0] graph_price_delta_1;
+    reg [20:0] graph_price_product_0;
+    reg [20:0] graph_price_product_1;
+    reg [9:0] graph_y_0;
+    reg [9:0] graph_y_1;
+    reg [9:0] graph_line_y;
+    reg [10:0] graph_next_progress;
+    reg [9:0] graph_next_y;
+    reg [9:0] graph_low_y;
+    reg [9:0] graph_high_y;
+    reg [9:0] graph_y_delta;
+    reg [20:0] graph_y_product;
+    reg [20:0] graph_next_y_product;
+    reg [9:0] graph_y_step;
+    reg [9:0] graph_next_y_step;
+    reg [9:0] graph_plot_height;
     reg graph_line_pixel;
 
     // Interpolate between adjacent historical samples and map prices to the
-    // configured vertical range. Values outside that range are clipped.
+    // configured vertical range. Narrow intermediates avoid 32-bit datapaths.
     always @(*) begin
         graph_x_offset = 0;
-        graph_span = GRAPH_AXIS_RIGHT - GRAPH_AXIS_LEFT -
-                     GRAPH_AXIS_WIDTH - 1;
         graph_scaled_x = 0;
         graph_segment_index = 0;
         graph_segment_progress = 0;
@@ -476,6 +494,10 @@ module graphics #(
         graph_price_1 = 0;
         graph_clamped_price_0 = 0;
         graph_clamped_price_1 = 0;
+        graph_price_delta_0 = 0;
+        graph_price_delta_1 = 0;
+        graph_price_product_0 = 0;
+        graph_price_product_1 = 0;
         graph_y_0 = 0;
         graph_y_1 = 0;
         graph_line_y = 0;
@@ -483,29 +505,32 @@ module graphics #(
         graph_next_y = 0;
         graph_low_y = 0;
         graph_high_y = 0;
-        graph_plot_height = GRAPH_AXIS_BOTTOM - GRAPH_AXIS_TOP -
-                            GRAPH_AXIS_WIDTH - 1;
+        graph_y_delta = 0;
+        graph_y_product = 0;
+        graph_next_y_product = 0;
+        graph_y_step = 0;
+        graph_next_y_step = 0;
+        graph_plot_height = GRAPH_PLOT_HEIGHT;
         graph_line_pixel = 1'b0;
 
         if (GRAPH_POINTS >= 2 &&
             GRAPH_PRICE_MAX > GRAPH_PRICE_MIN &&
-            graph_span > 0 &&
+            GRAPH_SPAN > 0 &&
             x >= GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH &&
             x < GRAPH_AXIS_RIGHT) begin
             graph_x_offset = x - GRAPH_AXIS_LEFT - GRAPH_AXIS_WIDTH;
             graph_scaled_x = graph_x_offset * (GRAPH_POINTS - 1);
-            graph_segment_index = graph_scaled_x / graph_span;
-            graph_segment_progress = graph_scaled_x % graph_span;
+            graph_segment_index = graph_scaled_x / GRAPH_SPAN;
+            graph_segment_progress = graph_scaled_x % GRAPH_SPAN;
             if (graph_segment_index >= GRAPH_POINTS - 1) begin
                 graph_segment_index = GRAPH_POINTS - 2;
-                graph_segment_progress = graph_span;
+                graph_segment_progress = GRAPH_SPAN;
             end
 
             graph_price_0 =
-                (mock_graph_prices >> (graph_segment_index * 10)) & 10'h3ff;
+                mock_graph_prices[graph_segment_index * 10 +: 10];
             graph_price_1 =
-                (mock_graph_prices >> ((graph_segment_index + 1) * 10)) &
-                10'h3ff;
+                mock_graph_prices[(graph_segment_index + 1) * 10 +: 10];
 
             graph_clamped_price_0 = graph_price_0;
             graph_clamped_price_1 = graph_price_1;
@@ -518,23 +543,35 @@ module graphics #(
             else if (graph_clamped_price_1 > GRAPH_PRICE_MAX)
                 graph_clamped_price_1 = GRAPH_PRICE_MAX;
 
+            graph_price_delta_0 = graph_clamped_price_0 - GRAPH_PRICE_MIN;
+            graph_price_delta_1 = graph_clamped_price_1 - GRAPH_PRICE_MIN;
+            graph_price_product_0 = graph_price_delta_0 * graph_plot_height;
+            graph_price_product_1 = graph_price_delta_1 * graph_plot_height;
             graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
-                ((graph_clamped_price_0 - GRAPH_PRICE_MIN) *
-                 graph_plot_height) /
-                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+                graph_price_product_0 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
             graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
-                ((graph_clamped_price_1 - GRAPH_PRICE_MIN) *
-                 graph_plot_height) /
-                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
-            graph_line_y = graph_y_0 +
-                ((graph_y_1 - graph_y_0) * graph_segment_progress) /
-                graph_span;
+                graph_price_product_1 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+
+            if (graph_y_1 >= graph_y_0)
+                graph_y_delta = graph_y_1 - graph_y_0;
+            else
+                graph_y_delta = graph_y_0 - graph_y_1;
+            graph_y_product = graph_y_delta * graph_segment_progress;
+            graph_y_step = graph_y_product / GRAPH_SPAN;
+            if (graph_y_1 >= graph_y_0)
+                graph_line_y = graph_y_0 + graph_y_step;
+            else
+                graph_line_y = graph_y_0 - graph_y_step;
+
             graph_next_progress = graph_segment_progress + GRAPH_POINTS - 1;
-            if (graph_next_progress > graph_span)
-                graph_next_progress = graph_span;
-            graph_next_y = graph_y_0 +
-                ((graph_y_1 - graph_y_0) * graph_next_progress) /
-                graph_span;
+            if (graph_next_progress > GRAPH_SPAN)
+                graph_next_progress = GRAPH_SPAN;
+            graph_next_y_product = graph_y_delta * graph_next_progress;
+            graph_next_y_step = graph_next_y_product / GRAPH_SPAN;
+            if (graph_y_1 >= graph_y_0)
+                graph_next_y = graph_y_0 + graph_next_y_step;
+            else
+                graph_next_y = graph_y_0 - graph_next_y_step;
             if (graph_line_y < graph_next_y) begin
                 graph_low_y = graph_line_y;
                 graph_high_y = graph_next_y;
