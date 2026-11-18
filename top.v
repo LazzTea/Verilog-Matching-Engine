@@ -64,6 +64,8 @@ module top (
     reg [5:0] display_valid;
     reg [95:0] display_price_bcd;
     reg [71:0] display_quantity_bcd;
+    reg [59:0] display_depth_prices;
+    reg [53:0] display_depth_quantities;
     wire [2:0] display_row = request_buy ?
                              (row_index + 3'd3) : {1'b0, row_index};
 
@@ -222,6 +224,8 @@ module top (
             display_valid <= 6'd0;
             display_price_bcd <= 96'd0;
             display_quantity_bcd <= 72'd0;
+            display_depth_prices <= 60'd0;
+            display_depth_quantities <= 54'd0;
         end else begin
             case (controller_state)
                 ST_IDLE: begin
@@ -232,6 +236,8 @@ module top (
                         display_valid <= 6'd0;
                         display_price_bcd <= 96'd0;
                         display_quantity_bcd <= 72'd0;
+                        display_depth_prices <= 60'd0;
+                        display_depth_quantities <= 54'd0;
                         seed_index <= 3'd0;
                         row_index <= 2'd0;
                         if (stock_seeded[selected_stock])
@@ -290,6 +296,10 @@ module top (
                                 binary_to_bcd({1'b0, request_order[10:1]});
                             display_quantity_bcd[display_row * 12 +: 12] <=
                                 binary_to_bcd({1'b0, request_order[19:11]});
+                            display_depth_prices[display_row * 10 +: 10] <=
+                                request_order[10:1];
+                            display_depth_quantities[display_row * 9 +: 9] <=
+                                request_order[19:11];
                         end
                         if (row_index == 2 ||
                             request_order[31:20] == 12'hfff) begin
@@ -329,6 +339,10 @@ module top (
                                 binary_to_bcd({1'b0, request_order[10:1]});
                             display_quantity_bcd[display_row * 12 +: 12] <=
                                 binary_to_bcd({1'b0, request_order[19:11]});
+                            display_depth_prices[display_row * 10 +: 10] <=
+                                request_order[10:1];
+                            display_depth_quantities[display_row * 9 +: 9] <=
+                                request_order[19:11];
                         end
                         if (row_index == 2 ||
                             request_order[31:20] == 12'hfff) begin
@@ -412,6 +426,8 @@ module top (
         .mock_quantity_bcd(display_quantity_bcd),
         .mock_symbol(ticker_symbol),
         .selected_stock(display_stock),
+        .depth_prices(display_depth_prices),
+        .depth_quantities(display_depth_quantities),
         .mock_graph_price_history(graph_history_data),
         .hsync(vga_hsync),
         .vsync(vga_vsync),

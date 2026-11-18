@@ -9,6 +9,8 @@ module graphics_tb;
     reg [71:0] mock_quantity_bcd;
     reg [31:0] mock_symbol;
     reg [3:0] selected_stock;
+    reg [59:0] depth_prices;
+    reg [53:0] depth_quantities;
     reg [1599:0] mock_graph_price_history;
 
     wire hsync;
@@ -24,6 +26,17 @@ module graphics_tb;
     integer image_file;
     integer pixel_count;
     reg image_done;
+    reg ask_price_color_checked;
+    reg bid_price_color_checked;
+    reg ask_heading_background_checked;
+    reg bid_heading_background_checked;
+    integer ask_depth_pixel_count;
+    integer bid_depth_pixel_count;
+    integer bid_depth_pixels_after_best_bid;
+    integer bid_depth_pixels_before_995;
+    integer bid_depth_pixels_at_995;
+    integer graph_price_label_pixel_count;
+    integer graph_time_label_pixel_count;
     reg [9:0] last_x;
     reg [9:0] last_y;
 
@@ -41,6 +54,8 @@ module graphics_tb;
         .mock_quantity_bcd(mock_quantity_bcd),
         .mock_symbol(mock_symbol),
         .selected_stock(selected_stock),
+        .depth_prices(depth_prices),
+        .depth_quantities(depth_quantities),
         .mock_graph_price_history(mock_graph_price_history),
         .hsync(hsync),
         .vsync(vsync),
@@ -63,6 +78,51 @@ module graphics_tb;
             last_x = x;
             last_y = y;
             pixel_count = pixel_count + 1;
+            if (dut.depth_ask_curve_pixel)
+                ask_depth_pixel_count = ask_depth_pixel_count + 1;
+            if (dut.depth_bid_curve_pixel)
+                bid_depth_pixel_count = bid_depth_pixel_count + 1;
+            if (dut.depth_bid_curve_pixel && x > 463)
+                bid_depth_pixels_after_best_bid =
+                    bid_depth_pixels_after_best_bid + 1;
+            if (dut.depth_bid_curve_pixel && x < 326)
+                bid_depth_pixels_before_995 =
+                    bid_depth_pixels_before_995 + 1;
+            if (dut.depth_bid_curve_pixel && x == 326)
+                bid_depth_pixels_at_995 =
+                    bid_depth_pixels_at_995 + 1;
+            if (dut.graph_axis_label_pixel)
+                graph_price_label_pixel_count =
+                    graph_price_label_pixel_count + 1;
+            if (dut.graph_time_label_pixel)
+                graph_time_label_pixel_count =
+                    graph_time_label_pixel_count + 1;
+
+            if (x == 10'd20 && y == 10'd78) begin
+                if ({red, green, blue} !== {4'h3, 4'hf, 4'h8})
+                    $fatal(1, "Ask price is not green");
+                ask_price_color_checked = 1'b1;
+            end
+            if (x == 10'd20 && y == 10'd218) begin
+                if ({red, green, blue} !== {4'hf, 4'h5, 4'h5})
+                    $fatal(1, "Bid price is not red");
+                bid_price_color_checked = 1'b1;
+            end
+            if (x == 10'd190 && y == 10'd55) begin
+                if ({red, green, blue} !== {4'h5, 4'h7, 4'h9})
+                    $fatal(1, "Ask heading background is not gray");
+                ask_heading_background_checked = 1'b1;
+            end
+            if (x == 10'd190 && y == 10'd195) begin
+                if ({red, green, blue} !== {4'h5, 4'h7, 4'h9})
+                    $fatal(1, "Bid heading background is not gray");
+                bid_heading_background_checked = 1'b1;
+            end
+            if ((x == 10'd180 && y == 10'd75) ||
+                (x == 10'd180 && y == 10'd215)) begin
+                if ({red, green, blue} !== {4'h1, 4'h2, 4'h4})
+                    $fatal(1, "Order data row should keep the dark background");
+            end
 
             if (pixel_count == 640 * 480) begin
                 $fclose(image_file);
@@ -95,6 +155,17 @@ module graphics_tb;
         failures = 0;
         pixel_count = 0;
         image_done = 1'b0;
+        ask_price_color_checked = 1'b0;
+        bid_price_color_checked = 1'b0;
+        ask_heading_background_checked = 1'b0;
+        bid_heading_background_checked = 1'b0;
+        ask_depth_pixel_count = 0;
+        bid_depth_pixel_count = 0;
+        bid_depth_pixels_after_best_bid = 0;
+        bid_depth_pixels_before_995 = 0;
+        bid_depth_pixels_at_995 = 0;
+        graph_price_label_pixel_count = 0;
+        graph_time_label_pixel_count = 0;
         last_x = 10'h3ff;
         last_y = 10'h3ff;
 
@@ -115,6 +186,10 @@ module graphics_tb;
         };
         mock_symbol = "AAPL";
         selected_stock = 4'd0;
+        depth_prices = {10'd995, 10'd998, 10'd1005,
+                        10'd1012, 10'd1010, 10'd1008};
+        depth_quantities = {9'd75, 9'd150, 9'd200,
+                            9'd42, 9'd85, 9'd120};
         mock_graph_price_history = 1600'd0;
         mock_graph_price_history[0 +: 100] = {
             10'd600, 10'd250, 10'd750, 10'd500, 10'd250,
@@ -139,15 +214,29 @@ module graphics_tb;
         check_hsync(10'd656, 1'b0);
         check_hsync(10'd752, 1'b1);
 
+        while (!image_done)
+            @(negedge clk);
+
+        if (!ask_price_color_checked || !bid_price_color_checked ||
+            !ask_heading_background_checked || !bid_heading_background_checked)
+            $fatal(1, "Did not check ask/bid prices and heading backgrounds");
+        if (ask_depth_pixel_count == 0 || bid_depth_pixel_count == 0)
+            $fatal(1, "Depth chart did not draw both bid and ask curves");
+        if (bid_depth_pixels_after_best_bid != 0)
+            $fatal(1, "Bid curve extends beyond the best bid price");
+        if (bid_depth_pixels_before_995 == 0 ||
+            bid_depth_pixels_at_995 == 0)
+            $fatal(1, "Bid curve does not extend left from 995");
+        if (graph_price_label_pixel_count == 0 ||
+            graph_time_label_pixel_count == 0)
+            $fatal(1, "Last-buy chart did not draw its axis labels");
+
         if (failures == 0)
             $display("VGA timing checks passed; generated graphics.ppm");
         else begin
             $display("GRAPHICS TESTS FAILED: %0d failure(s)", failures);
             $fatal(1, "graphics testbench failed");
         end
-
-        while (!image_done)
-            @(negedge clk);
 
         $finish;
     end

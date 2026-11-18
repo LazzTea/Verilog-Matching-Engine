@@ -55,6 +55,22 @@ module top_tb;
             $fatal(1, "Unexpected BCD quantities: %h",
                    dut.display_quantity_bcd);
 
+        if (dut.display_depth_prices[9:0] !== 10'd504 ||
+            dut.display_depth_prices[19:10] !== 10'd506 ||
+            dut.display_depth_prices[29:20] !== 10'd508 ||
+            dut.display_depth_prices[39:30] !== 10'd496 ||
+            dut.display_depth_prices[49:40] !== 10'd494 ||
+            dut.display_depth_prices[59:50] !== 10'd492)
+            $fatal(1, "Unexpected raw prices passed to the depth chart");
+
+        if (dut.display_depth_quantities[8:0] !== 9'd80 ||
+            dut.display_depth_quantities[17:9] !== 9'd103 ||
+            dut.display_depth_quantities[26:18] !== 9'd126 ||
+            dut.display_depth_quantities[35:27] !== 9'd149 ||
+            dut.display_depth_quantities[44:36] !== 9'd172 ||
+            dut.display_depth_quantities[53:45] !== 9'd195)
+            $fatal(1, "Unexpected raw quantities passed to the depth chart");
+
         if (vga_hsync === 1'bx || vga_vsync === 1'bx)
             $fatal(1, "VGA sync outputs contain unknown values");
 
