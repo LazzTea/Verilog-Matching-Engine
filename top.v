@@ -21,6 +21,12 @@ module top (
     wire [7:0] uart_rx_data;
     wire uart_rx_data_valid;
     wire uart_rx_framing_error;
+    wire parser_order_valid;
+    wire [3:0] parser_order_symbol;
+    wire parser_order_buy;
+    wire [9:0] parser_order_price;
+    wire [8:0] parser_order_qty;
+    wire parser_command_error;
 
     uart_rx #(
         .CLK_FREQ(100_000_000),
@@ -63,11 +69,39 @@ module top (
     wire [31:0] ticker_symbol;
 
     wire order_in_ready;
-    wire order_in_valid = (controller_state == ST_SEED_SEND);
-    wire [3:0] order_symbol = active_stock;
-    wire order_buy = (seed_index >= 3);
-    wire [9:0] order_price = seed_price(active_stock, seed_index);
-    wire [8:0] order_qty = seed_quantity(active_stock, seed_index);
+    wire seed_order_active =
+        controller_state == ST_SEED_READY ||
+        controller_state == ST_SEED_SEND ||
+        controller_state == ST_SEED_BUSY ||
+        controller_state == ST_SEED_WAIT;
+    wire seed_order_valid = controller_state == ST_SEED_SEND;
+    wire order_in_valid =
+        seed_order_valid || (!seed_order_active && parser_order_valid);
+    wire parser_order_ready = order_in_ready && !seed_order_active;
+    wire [3:0] order_symbol = seed_order_valid ?
+                              active_stock : parser_order_symbol;
+    wire order_buy = seed_order_valid ?
+                     (seed_index >= 3) : parser_order_buy;
+    wire [9:0] order_price = seed_order_valid ?
+                             seed_price(active_stock, seed_index) :
+                             parser_order_price;
+    wire [8:0] order_qty = seed_order_valid ?
+                           seed_quantity(active_stock, seed_index) :
+                           parser_order_qty;
+
+    uart_command_parser command_parser (
+        .clk(clk),
+        .rst(reset_button),
+        .byte_data(uart_rx_data),
+        .byte_valid(uart_rx_data_valid),
+        .order_valid(parser_order_valid),
+        .order_ready(parser_order_ready),
+        .order_symbol(parser_order_symbol),
+        .order_buy(parser_order_buy),
+        .order_price(parser_order_price),
+        .order_qty(parser_order_qty),
+        .command_error(parser_command_error)
+    );
 
     // Port B reads one side of the selected stock. Each returned order is
     // packed as {next pointer, quantity, price, valid}.
@@ -205,8 +239,8 @@ module top (
             trade_symbol <= order_symbol;
     end
 
-    // The top-level demo only sends its generated seed orders; display reads
-    // share the order book's independent Port B.
+    // Demo and parsed UART orders share Port A; demo seeding takes priority.
+    // Display reads use the order book's independent Port B.
     order_book book (
         .clk(clk),
         .rst(reset_button),
