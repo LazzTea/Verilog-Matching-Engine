@@ -61,6 +61,7 @@ module top (
     reg [2:0] seed_index;
     reg [1:0] row_index;
     reg [3:0] read_timer;
+    reg display_refresh_pending;
     reg [STOCK_COUNT-1:0] stock_seeded;
 
     // Order-book write and read-port signals.
@@ -272,6 +273,7 @@ module top (
             seed_index <= 3'd0;
             row_index <= 2'd0;
             read_timer <= 4'd0;
+            display_refresh_pending <= 1'b0;
             stock_seeded <= {STOCK_COUNT{1'b0}};
             request_symbol <= 4'd0;
             request_buy <= 1'b0;
@@ -282,6 +284,10 @@ module top (
             display_depth_prices <= 60'd0;
             display_depth_quantities <= 54'd0;
         end else begin
+            if (parser_order_valid && parser_order_ready &&
+                parser_order_symbol == display_stock)
+                display_refresh_pending <= 1'b1;
+
             case (controller_state)
                 ST_IDLE: begin
                     if (display_stock != selected_stock) begin
@@ -299,6 +305,20 @@ module top (
                             controller_state <= ST_ASK_START;
                         else
                             controller_state <= ST_SEED_READY;
+                    end else if (display_refresh_pending &&
+                                 order_in_ready &&
+                                 !(parser_order_valid &&
+                                   parser_order_ready)) begin
+                        active_stock <= display_stock;
+                        display_valid <= 6'd0;
+                        display_price_bcd <= 96'd0;
+                        display_quantity_bcd <= 72'd0;
+                        display_depth_prices <= 60'd0;
+                        display_depth_quantities <= 54'd0;
+                        row_index <= 2'd0;
+                        read_timer <= 4'd0;
+                        display_refresh_pending <= 1'b0;
+                        controller_state <= ST_ASK_START;
                     end
                 end
 

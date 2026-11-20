@@ -12,6 +12,7 @@ module top_tb;
     wire [3:0] vga_green;
     wire [3:0] vga_blue;
     integer cycles;
+    integer bit_index;
 
     top dut (
         .clk(clk),
@@ -27,6 +28,41 @@ module top_tb;
     );
 
     always #5 clk = ~clk;
+
+    task send_uart_byte;
+        input [7:0] value;
+        begin
+            @(negedge clk);
+            uart_rxd = 1'b0;
+            repeat (868) @(negedge clk);
+            for (bit_index = 0; bit_index < 8;
+                 bit_index = bit_index + 1) begin
+                uart_rxd = value[bit_index];
+                repeat (868) @(negedge clk);
+            end
+            uart_rxd = 1'b1;
+            repeat (868) @(negedge clk);
+        end
+    endtask
+
+    task send_test_order;
+        begin
+            send_uart_byte(8'h42); // B
+            send_uart_byte(8'h2c); // ,
+            send_uart_byte(8'h41); // A
+            send_uart_byte(8'h41); // A
+            send_uart_byte(8'h50); // P
+            send_uart_byte(8'h4c); // L
+            send_uart_byte(8'h2c); // ,
+            send_uart_byte(8'h35); // 5
+            send_uart_byte(8'h30); // 0
+            send_uart_byte(8'h30); // 0
+            send_uart_byte(8'h2c); // ,
+            send_uart_byte(8'h34); // 4
+            send_uart_byte(8'h32); // 2
+            send_uart_byte(8'h0a); // LF
+        end
+    endtask
 
     initial begin
         repeat (3) @(posedge clk);
@@ -74,6 +110,19 @@ module top_tb;
             dut.display_depth_quantities[44:36] !== 9'd172 ||
             dut.display_depth_quantities[53:45] !== 9'd195)
             $fatal(1, "Unexpected raw quantities passed to the depth chart");
+
+        send_test_order();
+        cycles = 0;
+        while (dut.display_price_bcd[63:48] !== 16'h0500 &&
+               cycles < 1000) begin
+            @(posedge clk);
+            cycles = cycles + 1;
+        end
+        if (cycles == 1000)
+            $fatal(1, "Displayed order book did not refresh after UART order");
+        if (dut.display_price_bcd[79:64] !== 16'h0496 ||
+            dut.display_price_bcd[95:80] !== 16'h0494)
+            $fatal(1, "UART order did not shift the displayed bid levels");
 
         if (vga_hsync === 1'bx || vga_vsync === 1'bx)
             $fatal(1, "VGA sync outputs contain unknown values");
