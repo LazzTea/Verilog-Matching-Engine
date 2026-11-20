@@ -40,11 +40,7 @@ module graphics_tb;
     integer bid_depth_pixels_at_995;
     integer graph_price_label_pixel_count;
     integer graph_time_label_pixel_count;
-    integer graph_up_candle_pixel_count;
-    integer graph_down_candle_pixel_count;
-    integer graph_first_candle_pixel_count;
-    integer graph_last_candle_pixel_count;
-    integer graph_candle_slot_gap_count;
+    integer graph_line_pixel_count;
     reg [9:0] last_x;
     reg [9:0] last_y;
 
@@ -116,26 +112,8 @@ module graphics_tb;
             if (dut.graph_time_label_pixel)
                 graph_time_label_pixel_count =
                     graph_time_label_pixel_count + 1;
-            if (dut.graph_candle_pixel && dut.graph_candle_up)
-                graph_up_candle_pixel_count =
-                    graph_up_candle_pixel_count + 1;
-            if (dut.graph_candle_pixel && !dut.graph_candle_up)
-                graph_down_candle_pixel_count =
-                    graph_down_candle_pixel_count + 1;
-            if (dut.graph_candle_pixel && dut.graph_candle_index == 0)
-                graph_first_candle_pixel_count =
-                    graph_first_candle_pixel_count + 1;
-            if (dut.graph_candle_pixel && dut.graph_candle_index == 9)
-                graph_last_candle_pixel_count =
-                    graph_last_candle_pixel_count + 1;
-            if (y >= dut.GRAPH_AXIS_TOP + dut.GRAPH_AXIS_WIDTH &&
-                y < dut.GRAPH_AXIS_BOTTOM &&
-                x >= dut.GRAPH_AXIS_LEFT + dut.GRAPH_AXIS_WIDTH &&
-                x < dut.GRAPH_AXIS_LEFT + dut.GRAPH_AXIS_WIDTH +
-                    dut.GRAPH_POINTS * dut.GRAPH_CANDLE_WIDTH &&
-                (x < dut.graph_candle_left || x > dut.graph_candle_right))
-                graph_candle_slot_gap_count =
-                    graph_candle_slot_gap_count + 1;
+            if (dut.graph_line_pixel)
+                graph_line_pixel_count = graph_line_pixel_count + 1;
 
             if (x == 10'd20 && y == 10'd78) begin
                 if ({red, green, blue} !== {4'h3, 4'hf, 4'h8})
@@ -208,11 +186,7 @@ module graphics_tb;
         bid_depth_pixels_at_995 = 0;
         graph_price_label_pixel_count = 0;
         graph_time_label_pixel_count = 0;
-        graph_up_candle_pixel_count = 0;
-        graph_down_candle_pixel_count = 0;
-        graph_first_candle_pixel_count = 0;
-        graph_last_candle_pixel_count = 0;
-        graph_candle_slot_gap_count = 0;
+        graph_line_pixel_count = 0;
         last_x = 10'h3ff;
         last_y = 10'h3ff;
 
@@ -282,14 +256,8 @@ module graphics_tb;
         if (graph_price_label_pixel_count == 0 ||
             graph_time_label_pixel_count == 0)
             $fatal(1, "Last-buy chart did not draw its axis labels");
-        if (graph_up_candle_pixel_count == 0 ||
-            graph_down_candle_pixel_count == 0)
-            $fatal(1, "Last-buy chart did not draw both candle directions");
-        if (graph_first_candle_pixel_count == 0 ||
-            graph_last_candle_pixel_count == 0)
-            $fatal(1, "Last-buy candles do not span oldest to newest samples");
-        if (graph_candle_slot_gap_count != 0)
-            $fatal(1, "Last-buy candle slots contain horizontal gaps");
+        if (graph_line_pixel_count == 0)
+            $fatal(1, "Last-buy chart did not draw its history line");
 
         if (failures == 0)
             $display("VGA timing checks passed; generated graphics.ppm");

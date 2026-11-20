@@ -875,29 +875,36 @@ module graphics #(
         (GRAPH_SPAN > 0) ? $clog2(GRAPH_SPAN + 1) : 1;
     localparam GRAPH_SEGMENT_BITS =
         (GRAPH_POINTS > 1) ? $clog2(GRAPH_POINTS) : 1;
-    localparam GRAPH_MAX_CANDLE_COUNT = 20;
-    localparam GRAPH_CANDLE_WIDTH =
-        (GRAPH_SPAN + 1) / GRAPH_MAX_CANDLE_COUNT;
+    localparam GRAPH_SCALED_X_BITS =
+        (GRAPH_SPAN > 0 && GRAPH_POINTS > 1) ?
+        $clog2(GRAPH_SPAN * (GRAPH_POINTS - 1) + 1) : 1;
 
     reg [GRAPH_X_OFFSET_BITS-1:0] graph_x_offset;
-    reg [GRAPH_SEGMENT_BITS-1:0] graph_candle_index;
-    reg [9:0] graph_candle_left;
-    reg [9:0] graph_candle_right;
-    reg [10:0] graph_open_price;
-    reg [10:0] graph_close_price;
-    reg [10:0] graph_clamped_open_price;
-    reg [10:0] graph_clamped_close_price;
-    reg [10:0] graph_open_price_delta;
-    reg [10:0] graph_close_price_delta;
-    reg [20:0] graph_open_price_product;
-    reg [20:0] graph_close_price_product;
-    reg [9:0] graph_open_y;
-    reg [9:0] graph_close_y;
-    reg [9:0] graph_plot_height;
+    reg [GRAPH_SCALED_X_BITS-1:0] graph_scaled_x;
+    reg [GRAPH_SEGMENT_BITS-1:0] graph_segment_index;
+    reg [GRAPH_X_OFFSET_BITS-1:0] graph_segment_progress;
+    reg [10:0] graph_price_0;
+    reg [10:0] graph_price_1;
+    reg [10:0] graph_clamped_price_0;
+    reg [10:0] graph_clamped_price_1;
+    reg [10:0] graph_price_delta_0;
+    reg [10:0] graph_price_delta_1;
+    reg [20:0] graph_price_product_0;
+    reg [20:0] graph_price_product_1;
+    reg [9:0] graph_y_0;
+    reg [9:0] graph_y_1;
+    reg [9:0] graph_line_y;
+    reg [10:0] graph_next_progress;
+    reg [9:0] graph_next_y;
     reg [9:0] graph_low_y;
     reg [9:0] graph_high_y;
-    reg graph_candle_pixel;
-    reg graph_candle_up;
+    reg [9:0] graph_y_delta;
+    reg [20:0] graph_y_product;
+    reg [20:0] graph_next_y_product;
+    reg [9:0] graph_y_step;
+    reg [9:0] graph_next_y_step;
+    reg [9:0] graph_plot_height;
+    reg graph_line_pixel;
 
     reg graph_axis_label_pixel;
     reg graph_time_label_pixel;
@@ -916,95 +923,103 @@ module graphics #(
     reg [4:0] graph_time_bitmap;
     integer graph_tick_index;
 
-    // Draw a fixed-width candle for each of the latest trade-price samples.
-    // Sample zero is a doji because no earlier price is available.
+    // Interpolate between adjacent historical samples and map prices to the
+    // configured vertical range.
     always @(*) begin
         graph_x_offset = 0;
-        graph_candle_index = 0;
-        graph_candle_left = 0;
-        graph_candle_right = 0;
-        graph_open_price = 0;
-        graph_close_price = 0;
-        graph_clamped_open_price = 0;
-        graph_clamped_close_price = 0;
-        graph_open_price_delta = 0;
-        graph_close_price_delta = 0;
-        graph_open_price_product = 0;
-        graph_close_price_product = 0;
-        graph_open_y = 0;
-        graph_close_y = 0;
+        graph_scaled_x = 0;
+        graph_segment_index = 0;
+        graph_segment_progress = 0;
+        graph_price_0 = 0;
+        graph_price_1 = 0;
+        graph_clamped_price_0 = 0;
+        graph_clamped_price_1 = 0;
+        graph_price_delta_0 = 0;
+        graph_price_delta_1 = 0;
+        graph_price_product_0 = 0;
+        graph_price_product_1 = 0;
+        graph_y_0 = 0;
+        graph_y_1 = 0;
+        graph_line_y = 0;
+        graph_next_progress = 0;
+        graph_next_y = 0;
         graph_low_y = 0;
         graph_high_y = 0;
+        graph_y_delta = 0;
+        graph_y_product = 0;
+        graph_next_y_product = 0;
+        graph_y_step = 0;
+        graph_next_y_step = 0;
         graph_plot_height = GRAPH_PLOT_HEIGHT;
-        graph_candle_pixel = 1'b0;
-        graph_candle_up = 1'b0;
+        graph_line_pixel = 1'b0;
 
-        if (GRAPH_POINTS > 0 &&
+        if (GRAPH_POINTS >= 2 &&
             GRAPH_PRICE_MAX > GRAPH_PRICE_MIN &&
             GRAPH_SPAN > 0 &&
             x >= GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH &&
             x < GRAPH_AXIS_RIGHT) begin
             graph_x_offset = x - GRAPH_AXIS_LEFT - GRAPH_AXIS_WIDTH;
-            graph_candle_index = graph_x_offset / GRAPH_CANDLE_WIDTH;
-            if (graph_candle_index >= GRAPH_POINTS)
-                graph_candle_index = GRAPH_POINTS - 1;
-            graph_candle_left = GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH +
-                graph_candle_index * GRAPH_CANDLE_WIDTH;
-            graph_candle_right = graph_candle_left +
-                                 GRAPH_CANDLE_WIDTH - 1;
+            graph_scaled_x = graph_x_offset * (GRAPH_POINTS - 1);
+            graph_segment_index = graph_scaled_x / GRAPH_SPAN;
+            graph_segment_progress = graph_scaled_x % GRAPH_SPAN;
+            if (graph_segment_index >= GRAPH_POINTS - 1) begin
+                graph_segment_index = GRAPH_POINTS - 2;
+                graph_segment_progress = GRAPH_SPAN;
+            end
 
-            graph_close_price =
-                selected_graph_prices[graph_candle_index * 10 +: 10];
-            if (graph_candle_index == 0)
-                graph_open_price = graph_close_price;
+            graph_price_0 =
+                selected_graph_prices[graph_segment_index * 10 +: 10];
+            graph_price_1 =
+                selected_graph_prices[(graph_segment_index + 1) * 10 +: 10];
+
+            graph_clamped_price_0 = graph_price_0;
+            graph_clamped_price_1 = graph_price_1;
+            if (graph_clamped_price_0 < GRAPH_PRICE_MIN)
+                graph_clamped_price_0 = GRAPH_PRICE_MIN;
+            else if (graph_clamped_price_0 > GRAPH_PRICE_MAX)
+                graph_clamped_price_0 = GRAPH_PRICE_MAX;
+            if (graph_clamped_price_1 < GRAPH_PRICE_MIN)
+                graph_clamped_price_1 = GRAPH_PRICE_MIN;
+            else if (graph_clamped_price_1 > GRAPH_PRICE_MAX)
+                graph_clamped_price_1 = GRAPH_PRICE_MAX;
+
+            graph_price_delta_0 = graph_clamped_price_0 - GRAPH_PRICE_MIN;
+            graph_price_delta_1 = graph_clamped_price_1 - GRAPH_PRICE_MIN;
+            graph_price_product_0 = graph_price_delta_0 * graph_plot_height;
+            graph_price_product_1 = graph_price_delta_1 * graph_plot_height;
+            graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
+                graph_price_product_0 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+            graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
+                graph_price_product_1 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+
+            if (graph_y_1 >= graph_y_0)
+                graph_y_delta = graph_y_1 - graph_y_0;
             else
-                graph_open_price =
-                    selected_graph_prices[(graph_candle_index - 1) * 10 +: 10];
+                graph_y_delta = graph_y_0 - graph_y_1;
+            graph_y_product = graph_y_delta * graph_segment_progress;
+            graph_y_step = graph_y_product / GRAPH_SPAN;
+            if (graph_y_1 >= graph_y_0)
+                graph_line_y = graph_y_0 + graph_y_step;
+            else
+                graph_line_y = graph_y_0 - graph_y_step;
 
-            graph_clamped_open_price = graph_open_price;
-            graph_clamped_close_price = graph_close_price;
-            if (graph_clamped_open_price < GRAPH_PRICE_MIN)
-                graph_clamped_open_price = GRAPH_PRICE_MIN;
-            else if (graph_clamped_open_price > GRAPH_PRICE_MAX)
-                graph_clamped_open_price = GRAPH_PRICE_MAX;
-            if (graph_clamped_close_price < GRAPH_PRICE_MIN)
-                graph_clamped_close_price = GRAPH_PRICE_MIN;
-            else if (graph_clamped_close_price > GRAPH_PRICE_MAX)
-                graph_clamped_close_price = GRAPH_PRICE_MAX;
-
-            graph_open_price_delta =
-                graph_clamped_open_price - GRAPH_PRICE_MIN;
-            graph_close_price_delta =
-                graph_clamped_close_price - GRAPH_PRICE_MIN;
-            graph_open_price_product =
-                graph_open_price_delta * graph_plot_height;
-            graph_close_price_product =
-                graph_close_price_delta * graph_plot_height;
-            graph_open_y = GRAPH_AXIS_BOTTOM - 1 -
-                graph_open_price_product /
-                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
-            graph_close_y = GRAPH_AXIS_BOTTOM - 1 -
-                graph_close_price_product /
-                (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
-
-            if (graph_open_y < graph_close_y) begin
-                graph_low_y = graph_open_y;
-                graph_high_y = graph_close_y;
+            graph_next_progress = graph_segment_progress + GRAPH_POINTS - 1;
+            if (graph_next_progress > GRAPH_SPAN)
+                graph_next_progress = GRAPH_SPAN;
+            graph_next_y_product = graph_y_delta * graph_next_progress;
+            graph_next_y_step = graph_next_y_product / GRAPH_SPAN;
+            if (graph_y_1 >= graph_y_0)
+                graph_next_y = graph_y_0 + graph_next_y_step;
+            else
+                graph_next_y = graph_y_0 - graph_next_y_step;
+            if (graph_line_y < graph_next_y) begin
+                graph_low_y = graph_line_y;
+                graph_high_y = graph_next_y;
             end else begin
-                graph_low_y = graph_close_y;
-                graph_high_y = graph_open_y;
+                graph_low_y = graph_next_y;
+                graph_high_y = graph_line_y;
             end
-            if (graph_high_y - graph_low_y < 2) begin
-                if (graph_low_y > GRAPH_AXIS_TOP + GRAPH_AXIS_WIDTH)
-                    graph_low_y = graph_low_y - 1'b1;
-                if (graph_high_y < GRAPH_AXIS_BOTTOM - 1)
-                    graph_high_y = graph_high_y + 1'b1;
-            end
-
-            graph_candle_up = graph_close_price >= graph_open_price;
-            graph_candle_pixel =
-                x >= graph_candle_left && x <= graph_candle_right &&
-                y >= graph_low_y && y <= graph_high_y;
+            graph_line_pixel = y >= graph_low_y && y <= graph_high_y;
         end
     end
 
@@ -1076,16 +1091,12 @@ module graphics #(
                     graph_time_label_pixel = 1'b1;
             end
 
-            if (x >= GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH +
-                     GRAPH_POINTS * GRAPH_CANDLE_WIDTH - 18 &&
-                x < GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH +
-                    GRAPH_POINTS * GRAPH_CANDLE_WIDTH) begin
+            if (x >= GRAPH_AXIS_RIGHT - 20 &&
+                x < GRAPH_AXIS_RIGHT - 2) begin
                 graph_time_character_index =
-                    (x - (GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH +
-                          GRAPH_POINTS * GRAPH_CANDLE_WIDTH - 18)) / 6;
+                    (x - (GRAPH_AXIS_RIGHT - 20)) / 6;
                 graph_time_column =
-                    (x - (GRAPH_AXIS_LEFT + GRAPH_AXIS_WIDTH +
-                          GRAPH_POINTS * GRAPH_CANDLE_WIDTH - 18)) % 6;
+                    (x - (GRAPH_AXIS_RIGHT - 20)) % 6;
                 graph_time_bitmap = glyph_row(
                     graph_time_character(1'b1, graph_time_character_index),
                     graph_time_row);
@@ -1221,14 +1232,10 @@ module graphics #(
                     red = 4'h8;
                     green = 4'ha;
                     blue = 4'hc;
-                end else if (graph_candle_pixel && graph_candle_up) begin
+                end else if (graph_line_pixel) begin
                     red = 4'h3;
                     green = 4'hf;
                     blue = 4'h8;
-                end else if (graph_candle_pixel) begin
-                    red = 4'hf;
-                    green = 4'h5;
-                    blue = 4'h5;
                 end
             end
         end
