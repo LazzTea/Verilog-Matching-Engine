@@ -2,6 +2,8 @@ module top (
     input wire clk,
     input wire reset_button,
     input wire next_button,
+    input wire uart_rxd,
+    output wire uart_txd,
     output wire vga_hsync,
     output wire vga_vsync,
     output wire [3:0] vga_red,
@@ -12,6 +14,25 @@ module top (
     // for each stock shown by the selector.
     localparam integer STOCK_COUNT = 16;
     localparam integer GRAPH_POINTS = 20;
+
+    // Keep the UART transmit line at its idle mark until a transmitter is added.
+    assign uart_txd = 1'b1;
+
+    wire [7:0] uart_rx_data;
+    wire uart_rx_data_valid;
+    wire uart_rx_framing_error;
+
+    uart_rx #(
+        .CLK_FREQ(100_000_000),
+        .BAUD_RATE(115_200)
+    ) pc_uart_receiver (
+        .clk(clk),
+        .rst(reset_button),
+        .rx_serial(uart_rxd),
+        .data(uart_rx_data),
+        .data_valid(uart_rx_data_valid),
+        .framing_error(uart_rx_framing_error)
+    );
 
     // Controller phases for seeding a demo book, then reading its ask and bid
     // sides into registers consumed by graphics.

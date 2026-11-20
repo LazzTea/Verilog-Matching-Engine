@@ -4,6 +4,8 @@ module top_tb;
     reg clk = 1'b0;
     reg reset_button = 1'b1;
     reg next_button = 1'b0;
+    reg uart_rxd = 1'b1;
+    wire uart_txd;
     wire vga_hsync;
     wire vga_vsync;
     wire [3:0] vga_red;
@@ -15,6 +17,8 @@ module top_tb;
         .clk(clk),
         .reset_button(reset_button),
         .next_button(next_button),
+        .uart_rxd(uart_rxd),
+        .uart_txd(uart_txd),
         .vga_hsync(vga_hsync),
         .vga_vsync(vga_vsync),
         .vga_red(vga_red),
@@ -73,6 +77,8 @@ module top_tb;
 
         if (vga_hsync === 1'bx || vga_vsync === 1'bx)
             $fatal(1, "VGA sync outputs contain unknown values");
+        if (uart_txd !== 1'b1)
+            $fatal(1, "UART transmit line should idle high before UART TX is added");
 
         force dut.transaction = {9'd1, 10'd777, 1'b0};
         force dut.transaction_valid = 1'b1;
