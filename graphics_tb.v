@@ -32,11 +32,19 @@ module graphics_tb;
     reg bid_heading_background_checked;
     integer ask_depth_pixel_count;
     integer bid_depth_pixel_count;
-    integer bid_depth_pixels_after_best_bid;
+    integer bid_depth_pixels_above_zero_after_best_bid;
+    integer bid_depth_zero_baseline_after_best_bid;
+    integer bid_depth_pixels_above_42_at_1005;
+    integer bid_depth_pixels_at_42_at_1005;
     integer bid_depth_pixels_before_995;
     integer bid_depth_pixels_at_995;
     integer graph_price_label_pixel_count;
     integer graph_time_label_pixel_count;
+    integer graph_up_candle_pixel_count;
+    integer graph_down_candle_pixel_count;
+    integer graph_first_candle_pixel_count;
+    integer graph_last_candle_pixel_count;
+    integer graph_candle_slot_gap_count;
     reg [9:0] last_x;
     reg [9:0] last_y;
 
@@ -82,9 +90,20 @@ module graphics_tb;
                 ask_depth_pixel_count = ask_depth_pixel_count + 1;
             if (dut.depth_bid_curve_pixel)
                 bid_depth_pixel_count = bid_depth_pixel_count + 1;
-            if (dut.depth_bid_curve_pixel && x > 463)
-                bid_depth_pixels_after_best_bid =
-                    bid_depth_pixels_after_best_bid + 1;
+            if (dut.depth_bid_curve_pixel && x > 463 &&
+                y < dut.DEPTH_PLOT_BOTTOM)
+                bid_depth_pixels_above_zero_after_best_bid =
+                    bid_depth_pixels_above_zero_after_best_bid + 1;
+            if (dut.depth_bid_curve_pixel && x > 463 &&
+                y == dut.DEPTH_PLOT_BOTTOM)
+                bid_depth_zero_baseline_after_best_bid =
+                    bid_depth_zero_baseline_after_best_bid + 1;
+            if (dut.depth_bid_curve_pixel && x == 463 && y < 195)
+                bid_depth_pixels_above_42_at_1005 =
+                    bid_depth_pixels_above_42_at_1005 + 1;
+            if (dut.depth_bid_curve_pixel && x == 463 && y == 195)
+                bid_depth_pixels_at_42_at_1005 =
+                    bid_depth_pixels_at_42_at_1005 + 1;
             if (dut.depth_bid_curve_pixel && x < 326)
                 bid_depth_pixels_before_995 =
                     bid_depth_pixels_before_995 + 1;
@@ -97,6 +116,26 @@ module graphics_tb;
             if (dut.graph_time_label_pixel)
                 graph_time_label_pixel_count =
                     graph_time_label_pixel_count + 1;
+            if (dut.graph_candle_pixel && dut.graph_candle_up)
+                graph_up_candle_pixel_count =
+                    graph_up_candle_pixel_count + 1;
+            if (dut.graph_candle_pixel && !dut.graph_candle_up)
+                graph_down_candle_pixel_count =
+                    graph_down_candle_pixel_count + 1;
+            if (dut.graph_candle_pixel && dut.graph_candle_index == 0)
+                graph_first_candle_pixel_count =
+                    graph_first_candle_pixel_count + 1;
+            if (dut.graph_candle_pixel && dut.graph_candle_index == 9)
+                graph_last_candle_pixel_count =
+                    graph_last_candle_pixel_count + 1;
+            if (y >= dut.GRAPH_AXIS_TOP + dut.GRAPH_AXIS_WIDTH &&
+                y < dut.GRAPH_AXIS_BOTTOM &&
+                x >= dut.GRAPH_AXIS_LEFT + dut.GRAPH_AXIS_WIDTH &&
+                x < dut.GRAPH_AXIS_LEFT + dut.GRAPH_AXIS_WIDTH +
+                    dut.GRAPH_POINTS * dut.GRAPH_CANDLE_WIDTH &&
+                (x < dut.graph_candle_left || x > dut.graph_candle_right))
+                graph_candle_slot_gap_count =
+                    graph_candle_slot_gap_count + 1;
 
             if (x == 10'd20 && y == 10'd78) begin
                 if ({red, green, blue} !== {4'h3, 4'hf, 4'h8})
@@ -161,11 +200,19 @@ module graphics_tb;
         bid_heading_background_checked = 1'b0;
         ask_depth_pixel_count = 0;
         bid_depth_pixel_count = 0;
-        bid_depth_pixels_after_best_bid = 0;
+        bid_depth_pixels_above_zero_after_best_bid = 0;
+        bid_depth_zero_baseline_after_best_bid = 0;
+        bid_depth_pixels_above_42_at_1005 = 0;
+        bid_depth_pixels_at_42_at_1005 = 0;
         bid_depth_pixels_before_995 = 0;
         bid_depth_pixels_at_995 = 0;
         graph_price_label_pixel_count = 0;
         graph_time_label_pixel_count = 0;
+        graph_up_candle_pixel_count = 0;
+        graph_down_candle_pixel_count = 0;
+        graph_first_candle_pixel_count = 0;
+        graph_last_candle_pixel_count = 0;
+        graph_candle_slot_gap_count = 0;
         last_x = 10'h3ff;
         last_y = 10'h3ff;
 
@@ -188,8 +235,8 @@ module graphics_tb;
         selected_stock = 4'd0;
         depth_prices = {10'd995, 10'd998, 10'd1005,
                         10'd1012, 10'd1010, 10'd1008};
-        depth_quantities = {9'd75, 9'd150, 9'd200,
-                            9'd42, 9'd85, 9'd120};
+        depth_quantities = {9'd075, 9'd150, 9'd042,
+                            9'd200, 9'd085, 9'd120};
         mock_graph_price_history = 1600'd0;
         mock_graph_price_history[0 +: 100] = {
             10'd600, 10'd250, 10'd750, 10'd500, 10'd250,
@@ -222,14 +269,27 @@ module graphics_tb;
             $fatal(1, "Did not check ask/bid prices and heading backgrounds");
         if (ask_depth_pixel_count == 0 || bid_depth_pixel_count == 0)
             $fatal(1, "Depth chart did not draw both bid and ask curves");
-        if (bid_depth_pixels_after_best_bid != 0)
-            $fatal(1, "Bid curve extends beyond the best bid price");
+        if (bid_depth_pixels_above_zero_after_best_bid != 0)
+            $fatal(1, "Bid curve has depth beyond the best bid price");
+        if (bid_depth_zero_baseline_after_best_bid == 0)
+            $fatal(1, "Bid curve does not extend at zero depth to the right");
+        if (bid_depth_pixels_above_42_at_1005 != 0 ||
+            bid_depth_pixels_at_42_at_1005 == 0)
+            $fatal(1, "Bid depth at 1005 does not match quantity 42");
         if (bid_depth_pixels_before_995 == 0 ||
             bid_depth_pixels_at_995 == 0)
             $fatal(1, "Bid curve does not extend left from 995");
         if (graph_price_label_pixel_count == 0 ||
             graph_time_label_pixel_count == 0)
             $fatal(1, "Last-buy chart did not draw its axis labels");
+        if (graph_up_candle_pixel_count == 0 ||
+            graph_down_candle_pixel_count == 0)
+            $fatal(1, "Last-buy chart did not draw both candle directions");
+        if (graph_first_candle_pixel_count == 0 ||
+            graph_last_candle_pixel_count == 0)
+            $fatal(1, "Last-buy candles do not span oldest to newest samples");
+        if (graph_candle_slot_gap_count != 0)
+            $fatal(1, "Last-buy candle slots contain horizontal gaps");
 
         if (failures == 0)
             $display("VGA timing checks passed; generated graphics.ppm");

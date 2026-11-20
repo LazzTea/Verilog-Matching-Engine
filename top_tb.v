@@ -79,7 +79,7 @@ module top_tb;
         force dut.trade_symbol = 4'd0;
         @(posedge clk);
         #1;
-        if (dut.graph_history[310 +: 10] !== 10'd777)
+        if (dut.graph_history[190 +: 10] !== 10'd777)
             $fatal(1, "Trade price was not appended to the selected stock graph");
         release dut.transaction;
         release dut.transaction_valid;

@@ -11,7 +11,7 @@ module top (
     // Display and graph dimensions. The order book uses one 4-bit symbol ID
     // for each stock shown by the selector.
     localparam integer STOCK_COUNT = 16;
-    localparam integer GRAPH_POINTS = 32;
+    localparam integer GRAPH_POINTS = 20;
 
     // Controller phases for seeding a demo book, then reading its ask and bid
     // sides into registers consumed by graphics.
