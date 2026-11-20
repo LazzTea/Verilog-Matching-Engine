@@ -1,4 +1,10 @@
-module order_book (
+module order_book 
+#(
+  parameter BOOK_FILE     = "",
+  parameter HEAD_FILE    = "",
+  parameter PRELOAD_COUNT = 0
+)
+(
   input wire clk,
   input wire rst,
 
@@ -14,8 +20,6 @@ module order_book (
   output reg  [19:0] transaction,
   output reg         trans_valid,
 
-  output reg  [11:0] rest_id,
-  output reg         rest_valid,
   output reg         full,
 
   // Port B : Display
@@ -37,7 +41,7 @@ struct level_table [ticker[4] + buy[1]]
   head_addr[12]
 } MSB
 */
-reg [11:0] level_table [0:31];
+reg [11:0] head_table [0:31];
 
 /*
 struct order_book
@@ -56,6 +60,10 @@ reg [31:0] order_book [0:4095];
 integer i;
 initial begin
   for (i = 0; i < 4096; i = i + 1) order_book[i] = 32'd0;
+  for (i = 0; i < 32;   i = i + 1) head_table[i] = NULL;
+
+  if (BOOK_FILE  != "") $readmemh(BOOK_FILE,  order_book);
+  if (HEAD_FILE != "") $readmemh(HEAD_FILE, head_table);
 end
 
 // Register to Save Current Order
@@ -87,15 +95,15 @@ wire goes_before = r_buy ? (r_price > or_price) : (r_price < or_price);
 reg [11:0] last_order_addr;
 reg [31:0] last_order;
 
-// Head lookups (level_table is small, read instantly)
-wire [11:0] opp_head_in = level_table[{symbol, ~buy}];
-wire [11:0] own_head    = level_table[{r_symbol, r_buy}];
+// Head lookups
+wire [11:0] opp_head_in = head_table[{symbol, ~buy}];
+wire [11:0] own_head    = head_table[{r_symbol, r_buy}];
 
 // Clean slots: never-used slots come from clean_fresh, freed slots go on a stack
 (* ram_style = "distributed" *)
 reg  [11:0] clean [0:4095];
-reg  [12:0] clean_sp;
-reg  [11:0] clean_fresh;
+reg  [12:0] clean_sp = 0;
+reg  [11:0] clean_fresh = PRELOAD_COUNT;
 wire        have_clean = (clean_sp != 0);
 wire [11:0] new_slot   = have_clean ? clean[clean_sp - 1'b1] : clean_fresh;
 wire        slot_ok    = have_clean || (clean_fresh != NULL);
@@ -108,7 +116,8 @@ localparam [2:0]  S_IDLE   = 3'd0,   // wait for an order, read opposite head
                   S_ADD    = 3'd3,   // walk own side to find the spot
                   S_ADD_WR = 3'd4,   // write the new order
                   S_LINK   = 3'd5;   // point the previous order at the new one
-reg [2:0] step;
+
+reg [2:0] step = S_IDLE;
 
 assign in_ready = (step == S_IDLE);
 
@@ -116,16 +125,10 @@ assign in_ready = (step == S_IDLE);
 // Port A
 always @(posedge clk) begin
   trans_valid <= 0;
-  rest_valid  <= 0;
   full        <= 0;
 
   if (rst) begin
-    for (i = 0; i < 32; i = i + 1)
-      level_table[i] <= NULL;
-
     order_addr  <= NULL;
-    clean_sp    <= 0;
-    clean_fresh <= 0;
 
     r_symbol  <= 0;
     r_buy     <= 0;
@@ -167,7 +170,7 @@ always @(posedge clk) begin
           if (!or_more) begin
             clean[clean_sp] <= order_addr;
             clean_sp <= clean_sp + 1'b1;
-            level_table[{r_symbol, ~r_buy}] <= or_next;
+            head_table[{r_symbol, ~r_buy}] <= or_next;
             order_addr <= or_next;
             r_qty      <= diff[8:0];
 
@@ -222,14 +225,12 @@ always @(posedge clk) begin
         if (slot_ok) begin
           order_book[new_slot] <= {order_addr, r_qty, r_price, 1'b1};
           r_new_slot <= new_slot;
-          if (have_clean) clean_sp    <= clean_sp - 1'b1;
+
+          if (have_clean) clean_sp  <= clean_sp - 1'b1;
           else            clean_fresh <= clean_fresh + 1'b1;
 
-          rest_id    <= new_slot;
-          rest_valid <= 1;
-
           if (last_order_addr == NULL) begin
-            level_table[{r_symbol, r_buy}] <= new_slot;
+            head_table[{r_symbol, r_buy}] <= new_slot;
             step <= S_IDLE;
           end else begin
             step <= S_LINK;
@@ -258,7 +259,7 @@ reg  [11:0] req_num;
 reg  [31:0] b_order;
 wire        b_valid  = b_order[0];
 wire [11:0] b_next   = b_order[31:20];
-wire [11:0] req_head = level_table[{request_symbol, request_buy}];
+wire [11:0] req_head = head_table[{request_symbol, request_buy}];
 
 always @(posedge clk) begin
   req_out_valid <= 0;
