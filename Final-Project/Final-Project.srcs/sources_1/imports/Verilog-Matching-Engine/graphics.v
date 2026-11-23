@@ -980,10 +980,23 @@ module graphics #(
             graph_price_delta_1 = graph_clamped_price_1 - GRAPH_PRICE_MIN;
             graph_price_product_0 = graph_price_delta_0 * graph_plot_height;
             graph_price_product_1 = graph_price_delta_1 * graph_plot_height;
-            graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
-                graph_price_product_0 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
-            graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
-                graph_price_product_1 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+            if (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN == 1023) begin
+                graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
+                    ((graph_price_product_0 >> 10) +
+                     ((graph_price_product_0 >> 10) +
+                      graph_price_product_0[9:0] >= 11'd1023));
+                graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
+                    ((graph_price_product_1 >> 10) +
+                     ((graph_price_product_1 >> 10) +
+                      graph_price_product_1[9:0] >= 11'd1023));
+            end else begin
+                graph_y_0 = GRAPH_AXIS_BOTTOM - 1 -
+                    graph_price_product_0 /
+                    (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+                graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
+                    graph_price_product_1 /
+                    (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
+            end
 
             if (graph_y_1 >= graph_y_0) begin
                 graph_y_delta = graph_y_1 - graph_y_0;
