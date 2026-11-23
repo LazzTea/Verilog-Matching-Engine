@@ -26,6 +26,7 @@ module uart_command_parser (
     reg [3:0] number_digits;
     reg [3:0] command_symbol;
     reg [9:0] command_price;
+    wire line_ending = byte_data == 8'h0a || byte_data == 8'h0d;
 
     function [4:0] decode_symbol;
         input [31:0] token;
@@ -95,15 +96,16 @@ module uart_command_parser (
 
             if (byte_valid) begin
                 if (order_valid && !order_ready) begin
-                    command_error <= 1'b1;
-                    if (byte_data == 8'h0a)
+                    if (line_ending)
                         state <= STATE_SIDE;
-                    else
+                    else begin
+                        command_error <= 1'b1;
                         state <= STATE_DISCARD_LINE;
+                    end
                 end else begin
                     case (state)
                         STATE_SIDE: begin
-                            if (byte_data == 8'h0a || byte_data == 8'h0d) begin
+                            if (line_ending) begin
                                 state <= STATE_SIDE;
                             end else if (byte_data == 8'h42) begin
                                 command_buy <= 1'b1;
@@ -124,7 +126,7 @@ module uart_command_parser (
                                 state <= STATE_SYMBOL;
                             end else begin
                                 command_error <= 1'b1;
-                                if (byte_data == 8'h0a)
+                                if (line_ending)
                                     state <= STATE_SIDE;
                                 else
                                     state <= STATE_DISCARD_LINE;
@@ -152,7 +154,7 @@ module uart_command_parser (
                                 symbol_length <= symbol_length + 1'b1;
                             end else begin
                                 command_error <= 1'b1;
-                                if (byte_data == 8'h0a)
+                                if (line_ending)
                                     state <= STATE_SIDE;
                                 else
                                     state <= STATE_DISCARD_LINE;
@@ -180,7 +182,7 @@ module uart_command_parser (
                                 number_digits <= number_digits + 1'b1;
                             end else begin
                                 command_error <= 1'b1;
-                                if (byte_data == 8'h0a)
+                                if (line_ending)
                                     state <= STATE_SIDE;
                                 else
                                     state <= STATE_DISCARD_LINE;
@@ -188,7 +190,7 @@ module uart_command_parser (
                         end
 
                         STATE_QUANTITY: begin
-                            if (byte_data == 8'h0a) begin
+                            if (line_ending) begin
                                 if (number_digits != 0 &&
                                     number_value != 0 &&
                                     number_value <= 16'd511) begin
@@ -202,8 +204,6 @@ module uart_command_parser (
                                     command_error <= 1'b1;
                                     state <= STATE_SIDE;
                                 end
-                            end else if (byte_data == 8'h0d) begin
-                                state <= STATE_QUANTITY;
                             end else if (byte_data >= 8'h30 &&
                                          byte_data <= 8'h39 &&
                                          number_digits < 3) begin
@@ -217,7 +217,7 @@ module uart_command_parser (
                         end
 
                         STATE_DISCARD_LINE: begin
-                            if (byte_data == 8'h0a)
+                            if (line_ending)
                                 state <= STATE_SIDE;
                         end
 

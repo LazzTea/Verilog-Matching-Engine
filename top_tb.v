@@ -60,7 +60,7 @@ module top_tb;
             send_uart_byte(8'h2c); // ,
             send_uart_byte(8'h34); // 4
             send_uart_byte(8'h32); // 2
-            send_uart_byte(8'h0a); // LF
+            send_uart_byte(8'h0d); // CR, as sent by PuTTY's Enter key
         end
     endtask
 
