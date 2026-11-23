@@ -2,50 +2,46 @@
 
 module tb;
 
-reg [3:0] symbol_in;
-wire [3:0] symbol_out;
+reg  [31:0] ticker;
+wire [3:0]  symbol;
+wire        valid;
 
-reg [39:0] string_in;
-wire [39:0] string_out;
-
-// Input List: APPL = 0,
-symConv #(
-  .NUM_TICKERS(2),
-  .PTICKERS({"GOOG ", "APPL "})
+// Input List: APPL = 0, GOOG = 1 (first in the list is symbol 0)
+symbol_conversion #(
+    .NUM_TICKERS(2),
+    .PTICKERS({"APPL", "GOOG"})
 )
 dut (
-  .symbol_in(symbol_in), .symbol_out(symbol_out),
-  .string_in(string_in), .string_out(string_out)
+    .ticker(ticker),
+    .symbol(symbol), .valid(valid)
 );
 
-task test (reg [3:0] sym, reg [39:0] exp_str,
-    reg [39:0] str, reg [3:0] exp_sym);
+task test (input [31:0] str, input [3:0] exp_sym, input exp_valid);
+begin
+    ticker = str;
 
-symbol_in = sym;
-string_in = str;
+    #1;
 
-#1;
-
-if (string_out != exp_str) begin
-  $display("Inputing %b, Becomes %s, Instead of Expected %s\n", sym, string_out, exp_str);
+if (symbol != exp_sym) begin
+    $display("Inputing %s, Becomes %b, Instead of Expected %b\n", str, symbol, exp_sym);
 end
 
-if (symbol_out != exp_sym) begin
-  $display("Inputing %s, Becomes %b, Instead of Expected %b\n", str, symbol_out, exp_sym);
+if (valid != exp_valid) begin
+    $display("Inputing %s, Valid %b, Instead of Expected %b\n", str, valid, exp_valid);
 end
 
-// Change Later to Count Errors or something
-if ((string_out == exp_str) && (symbol_out == exp_sym)) begin
-  $display("Correct");
+  // Change Later to Count Errors or something
+    if ((symbol == exp_sym) && (valid == exp_valid)) begin
+        $display("Correct");
+    end
 end
-
 endtask
 
 
 initial begin
-  $display("Begin Testing Symbol Conversion");
-  test(0, "APPL ", "APPL ", 0);
-  test(1, "GOOG ", "GOOG ", 1);
+    $display("Begin Testing Symbol Conversion");
+    test("APPL", 0, 1);
+    test("GOOG", 1, 1);
+    test("TSLA", 0, 0);   // not in the list
 end
-  
 endmodule

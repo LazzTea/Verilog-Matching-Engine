@@ -1,4 +1,4 @@
-module userCtrls (
+module user_ctrls (
     input wire clk,
     input wire rst,
 

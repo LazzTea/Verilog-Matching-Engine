@@ -13,7 +13,7 @@ module tb;
     wire        valid;
     wire        valid_i;
 
-    userCtrls dut (
+    user_ctrls dut (
         .clk(clk), .rst(rst),
         .ch(ch), .valid_ch(valid_ch),
         .symbol(symbol), .buy(buy), .price(price), .qty(qty),
