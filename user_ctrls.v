@@ -19,7 +19,7 @@ module userCtrls (
 reg [7:0] uin [0:17];
 reg [4:0] indx = 0;
 
-reg valid_order;
+reg valid_order = 0;
 
 reg [5:0] ptr;
 reg next;
@@ -32,7 +32,8 @@ always @(posedge clk or posedge rst) begin
         valid_order = 0;
     end else if (!valid_ch)
         // Do nothing if Valid Char is not true
-    else if ((ch == 8'h0D || ch == 8'h0A) && (uin[0] == "b" || uin[0] == "s")) begin
+        valid_order = 0;
+    else if ((ch == 8'h0D || ch == 8'h0A) && (uin[0] == "b" || uin[0] == "s") && indx != 0) begin
         valid_order = 1;
         ptr = 0;
 
@@ -103,16 +104,8 @@ always @(posedge clk or posedge rst) begin
         // Quantity
         for (i = 0; i < 3; i = i + 1) begin
             if (!next && valid_order && ptr < indx) begin
-                // Back to Back spaces are errors
-                if (uin[ptr] == " " && i == 0) begin
-                    valid_order = 0;
-                end 
-                // Space after the first input moves on to next parse
-                else if (uin[ptr] == " ") begin
-                    next = 1;
-                end 
                 // Ensure input is a digit
-                else if (uin[ptr] >= 8'h30 && uin[ptr] <= 8'h39) begin
+                if (uin[ptr] >= 8'h30 && uin[ptr] <= 8'h39) begin
                     if (i == 0) qty = uin[ptr] - 8'h30;
                     else qty = qty * 10 + uin[ptr] - 8'h30;
                     ptr = ptr + 1;
@@ -121,36 +114,32 @@ always @(posedge clk or posedge rst) begin
                 else if (uin[ptr] < 8'h30 || uin[ptr] > 8'h39) begin
                     valid_order = 0;
                 end
-            end
+            end else if (i == 0) valid_order = 0;
         end
-
-        // Orders can end with a space
-        if (ptr < indx && uin[ptr] == " ") ptr = ptr + 1;
 
         // Trailing Inputs is an Error
         if (ptr != indx) valid_order = 0;
 
-        // Clear Index and User Input
+        // Clear Index
         indx = 0;
-        uin = 0;
 
-    end else if (ch == 8'h0D || ch == 8'h0A) begin
+    end else if ((ch == 8'h0D || ch == 8'h0A) && indx != 0) begin
         // Invalid First Character, Can't Be correct
         valid_order = 0;
         indx = 0;
-        uin = 0;
     end
 
     else begin
         // Store Char
-        if (indx < 18) begin
+        if (indx < 18 && !(ch == 8'h0D || ch == 8'h0A)) begin
             uin[indx] = ch;
             indx = indx + 1;
         end
+
+        valid_order = 0;
     end
 end
 
 assign valid = valid_order;
-
 
 endmodule
