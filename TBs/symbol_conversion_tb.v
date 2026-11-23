@@ -10,8 +10,7 @@ wire        valid;
 symbol_conversion #(
     .NUM_TICKERS(2),
     .PTICKERS({"APPL", "GOOG"})
-)
-dut (
+) dut (
     .ticker(ticker),
     .symbol(symbol), .valid(valid)
 );

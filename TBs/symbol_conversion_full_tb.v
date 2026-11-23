@@ -12,8 +12,7 @@ wire [39:0] string_out;
 symConv #(
   .NUM_TICKERS(2),
   .PTICKERS({"GOOG ", "APPL "})
-)
-dut (
+) dut (
   .symbol_in(symbol_in), .symbol_out(symbol_out),
   .string_in(string_in), .string_out(string_out)
 );
