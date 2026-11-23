@@ -892,16 +892,13 @@ module graphics #(
     reg [20:0] graph_price_product_1;
     reg [9:0] graph_y_0;
     reg [9:0] graph_y_1;
-    reg [9:0] graph_line_y;
+    reg [9:0] graph_y_offset;
     reg [10:0] graph_next_progress;
-    reg [9:0] graph_next_y;
-    reg [9:0] graph_low_y;
-    reg [9:0] graph_high_y;
     reg [9:0] graph_y_delta;
     reg [20:0] graph_y_product;
     reg [20:0] graph_next_y_product;
-    reg [9:0] graph_y_step;
-    reg [9:0] graph_next_y_step;
+    reg [20:0] graph_y_lower_product;
+    reg [20:0] graph_y_upper_product;
     reg [9:0] graph_plot_height;
     reg graph_line_pixel;
 
@@ -939,16 +936,13 @@ module graphics #(
         graph_price_product_1 = 0;
         graph_y_0 = 0;
         graph_y_1 = 0;
-        graph_line_y = 0;
+        graph_y_offset = 0;
         graph_next_progress = 0;
-        graph_next_y = 0;
-        graph_low_y = 0;
-        graph_high_y = 0;
         graph_y_delta = 0;
         graph_y_product = 0;
         graph_next_y_product = 0;
-        graph_y_step = 0;
-        graph_next_y_step = 0;
+        graph_y_lower_product = 0;
+        graph_y_upper_product = 0;
         graph_plot_height = GRAPH_PLOT_HEIGHT;
         graph_line_pixel = 1'b0;
 
@@ -991,34 +985,30 @@ module graphics #(
             graph_y_1 = GRAPH_AXIS_BOTTOM - 1 -
                 graph_price_product_1 / (GRAPH_PRICE_MAX - GRAPH_PRICE_MIN);
 
-            if (graph_y_1 >= graph_y_0)
+            if (graph_y_1 >= graph_y_0) begin
                 graph_y_delta = graph_y_1 - graph_y_0;
-            else
+                if (y >= graph_y_0)
+                    graph_y_offset = y - graph_y_0;
+                else
+                    graph_y_offset = 10'h3ff;
+            end else begin
                 graph_y_delta = graph_y_0 - graph_y_1;
+                if (y <= graph_y_0)
+                    graph_y_offset = graph_y_0 - y;
+                else
+                    graph_y_offset = 10'h3ff;
+            end
             graph_y_product = graph_y_delta * graph_segment_progress;
-            graph_y_step = graph_y_product / GRAPH_SPAN;
-            if (graph_y_1 >= graph_y_0)
-                graph_line_y = graph_y_0 + graph_y_step;
-            else
-                graph_line_y = graph_y_0 - graph_y_step;
-
             graph_next_progress = graph_segment_progress + GRAPH_POINTS - 1;
             if (graph_next_progress > GRAPH_SPAN)
                 graph_next_progress = GRAPH_SPAN;
             graph_next_y_product = graph_y_delta * graph_next_progress;
-            graph_next_y_step = graph_next_y_product / GRAPH_SPAN;
-            if (graph_y_1 >= graph_y_0)
-                graph_next_y = graph_y_0 + graph_next_y_step;
-            else
-                graph_next_y = graph_y_0 - graph_next_y_step;
-            if (graph_line_y < graph_next_y) begin
-                graph_low_y = graph_line_y;
-                graph_high_y = graph_next_y;
-            end else begin
-                graph_low_y = graph_next_y;
-                graph_high_y = graph_line_y;
-            end
-            graph_line_pixel = y >= graph_low_y && y <= graph_high_y;
+            graph_y_lower_product = graph_y_offset * GRAPH_SPAN;
+            graph_y_upper_product =
+                graph_y_lower_product + GRAPH_SPAN;
+            graph_line_pixel =
+                graph_y_lower_product <= graph_next_y_product &&
+                graph_y_upper_product > graph_y_product;
         end
     end
 
