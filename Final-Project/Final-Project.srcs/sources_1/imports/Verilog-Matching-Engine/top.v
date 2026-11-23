@@ -156,13 +156,14 @@ module top (
     function [9:0] seed_price;
         input [3:0] stock;
         input [2:0] index;
-        integer midpoint;
+        reg [9:0] midpoint;
         begin
-            midpoint = 500 + stock * 12;
+            midpoint = 10'd500 + stock * 10'd12;
             if (index < 3)
-                seed_price = midpoint + 4 + index * 2;
+                seed_price = midpoint + 10'd4 + index * 10'd2;
             else
-                seed_price = midpoint - 4 - (index - 3) * 2;
+                seed_price = midpoint - 10'd4 -
+                             (index - 3'd3) * 10'd2;
         end
     endfunction
 
@@ -171,8 +172,11 @@ module top (
     function [8:0] seed_quantity;
         input [3:0] stock;
         input [2:0] index;
+        reg [8:0] quantity_offset;
         begin
-            seed_quantity = 80 + ((stock * 7 + index * 23) % 300);
+            quantity_offset = ({5'd0, stock} * 9'd7) +
+                              ({6'd0, index} * 9'd23);
+            seed_quantity = 9'd80 + quantity_offset;
         end
     endfunction
 
