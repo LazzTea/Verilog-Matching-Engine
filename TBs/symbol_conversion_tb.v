@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module tb;
 
 reg [3:0] symbol_in;

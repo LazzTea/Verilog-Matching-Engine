@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 module tb;
     reg         clk = 0;
     reg         rst = 1;
