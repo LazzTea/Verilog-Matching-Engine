@@ -121,6 +121,38 @@ reg [2:0] step = S_IDLE;
 
 assign in_ready = (step == S_IDLE);
 
+wire port_a_read_enable =
+    !rst &&
+    ((step == S_IDLE && in_valid && opp_head_in != NULL) ||
+     (step == S_MATCH && crosses && !or_more && !equal &&
+      or_next != NULL) ||
+     (step == S_ADD_RD && own_head != NULL) ||
+     (step == S_ADD && !goes_before && or_next != NULL));
+wire [11:0] port_a_read_address =
+    step == S_IDLE ? opp_head_in :
+    step == S_ADD_RD ? own_head : or_next;
+
+wire port_a_write_enable =
+    !rst &&
+    ((step == S_MATCH && crosses && or_more) ||
+     (step == S_ADD_WR && slot_ok) ||
+     (step == S_LINK));
+wire [11:0] port_a_write_address =
+    step == S_MATCH ? order_addr :
+    step == S_ADD_WR ? new_slot : last_order_addr;
+wire [31:0] port_a_write_data =
+    step == S_MATCH ? {or_next, or_left, or_price, 1'b1} :
+    step == S_ADD_WR ? {order_addr, r_qty, r_price, 1'b1} :
+                       {r_new_slot, last_order[19:0]};
+
+// Keep all matching/insertion accesses on one synchronous BRAM port.
+always @(posedge clk) begin
+  if (port_a_read_enable)
+    order <= order_book[port_a_read_address];
+  if (port_a_write_enable)
+    order_book[port_a_write_address] <= port_a_write_data;
+end
+
 
 // Port A
 always @(posedge clk) begin
@@ -151,8 +183,6 @@ always @(posedge clk) begin
 
           // Get the Nearest Opposite Order (ready next cycle)
           order_addr <= opp_head_in;
-          if (opp_head_in != NULL)
-            order <= order_book[opp_head_in];
 
           // Opposite side empty -> nothing to match, go add
           if (opp_head_in == NULL) step <= S_ADD_RD;
@@ -177,14 +207,12 @@ always @(posedge clk) begin
             if (equal)                step <= S_IDLE;
             else if (or_next == NULL) step <= S_ADD_RD;
             else begin
-              order <= order_book[or_next];
               step  <= S_MATCH;
             end
           end
 
           // Opp Bigger: change it to its new quantity, new order satisfied
           else begin
-            order_book[order_addr] <= {or_next, or_left, or_price, 1'b1};
             step <= S_IDLE;
           end
         end
@@ -202,7 +230,6 @@ always @(posedge clk) begin
 
         if (own_head == NULL) step <= S_ADD_WR;
         else begin
-          order <= order_book[own_head];
           step  <= S_ADD;
         end
       end
@@ -216,14 +243,12 @@ always @(posedge clk) begin
           last_order      <= order;
           order_addr      <= or_next;
           if (or_next == NULL) step <= S_ADD_WR;
-          else order <= order_book[or_next];
         end
       end
 
       // Write new order, fix head if needed
       S_ADD_WR: begin
         if (slot_ok) begin
-          order_book[new_slot] <= {order_addr, r_qty, r_price, 1'b1};
           r_new_slot <= new_slot;
 
           if (have_clean) clean_sp  <= clean_sp - 1'b1;
@@ -243,7 +268,6 @@ always @(posedge clk) begin
 
       // Previous order's next = new order
       S_LINK: begin
-        order_book[last_order_addr] <= {r_new_slot, last_order[19:0]};
         step <= S_IDLE;
       end
 
@@ -260,6 +284,16 @@ reg  [31:0] b_order;
 wire        b_valid  = b_order[0];
 wire [11:0] b_next   = b_order[31:20];
 wire [11:0] req_head = head_table[{request_symbol, request_buy}];
+wire port_b_read_enable =
+    !rst &&
+    ((!busy && request_num != 0 && req_head != NULL) ||
+     (busy && b_valid && req_num > 1 && b_next != NULL));
+wire [11:0] port_b_read_address = busy ? b_next : req_head;
+
+always @(posedge clk) begin
+  if (port_b_read_enable)
+    b_order <= order_book[port_b_read_address];
+end
 
 always @(posedge clk) begin
   req_out_valid <= 0;
@@ -271,7 +305,6 @@ always @(posedge clk) begin
   else if (!busy) begin
     if (request_num != 0 && req_head != NULL) begin
       req_num <= request_num;
-      b_order <= order_book[req_head];
       busy    <= 1;
     end
   end
@@ -282,9 +315,6 @@ always @(posedge clk) begin
       req_out_valid <= 1;
     end
     req_num <= req_num - 1'b1;
-
-    if (b_valid && req_num > 1 && b_next != NULL)
-      b_order <= order_book[b_next];
 
     // Stop at the count, the end of the list, or a bad entry
     if (!b_valid || req_num == 1 || b_next == NULL)

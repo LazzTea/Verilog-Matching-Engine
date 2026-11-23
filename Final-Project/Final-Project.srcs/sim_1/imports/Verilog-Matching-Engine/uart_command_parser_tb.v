@@ -94,6 +94,16 @@ module uart_command_parser_tb;
             $fatal(1, "Parser decoded the AMD sell command incorrectly");
         accept_order();
 
+        send_line("B,KO,700,25", 11);
+        send_char(8'h0d);
+        while (!order_valid)
+            @(negedge clk);
+        #1;
+        if (order_symbol !== 4'd15 || order_buy !== 1'b1 ||
+            order_price !== 10'd700 || order_qty !== 9'd25)
+            $fatal(1, "Parser did not accept a CR-terminated command");
+        accept_order();
+
         send_line("B,NOPE,100,1\n", 13);
         repeat (2) @(negedge clk);
         if (order_valid || error_count != 1)
