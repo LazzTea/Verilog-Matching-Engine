@@ -11,7 +11,7 @@ wire [39:0] string_out;
 // Input List: APPL = 0,
 symConv #(
   .NUM_TICKERS(2),
-  .PTICKERS({"GOOG ", "APPL "})
+  .PTICKERS({"GOOG ", "AAPL "})
 ) dut (
   .symbol_in(symbol_in), .symbol_out(symbol_out),
   .string_in(string_in), .string_out(string_out)
@@ -43,7 +43,7 @@ endtask
 
 initial begin
   $display("Begin Testing Symbol Conversion");
-  test(0, "APPL ", "APPL ", 0);
+  test(0, "AAPL ", "AAPL ", 0);
   test(1, "GOOG ", "GOOG ", 1);
 end
   

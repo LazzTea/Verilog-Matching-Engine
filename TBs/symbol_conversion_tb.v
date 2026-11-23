@@ -9,7 +9,7 @@ wire        valid;
 // Input List: APPL = 0, GOOG = 1 (first in the list is symbol 0)
 symbol_conversion #(
     .NUM_TICKERS(2),
-    .PTICKERS({"APPL", "GOOG"})
+    .PTICKERS({"AAPL", "GOOG"})
 ) dut (
     .ticker(ticker),
     .symbol(symbol), .valid(valid)
@@ -39,7 +39,7 @@ endtask
 
 initial begin
     $display("Begin Testing Symbol Conversion");
-    test("APPL", 0, 1);
+    test("AAPL", 0, 1);
     test("GOOG", 1, 1);
     test("TSLA", 0, 0);   // not in the list
 end

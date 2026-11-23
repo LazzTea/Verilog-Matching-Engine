@@ -1,6 +1,6 @@
 module symConv #(
   parameter [3:0] NUM_TICKERS = 1,
-  parameter PTICKERS = "APPL"
+  parameter PTICKERS = "AAPL"
 ) (
   input wire [3:0] symbol_in,
   input wire [39:0] string_in,

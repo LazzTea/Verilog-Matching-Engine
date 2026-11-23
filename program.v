@@ -14,8 +14,8 @@ user_ctrls uc (
 
 // Converts String to Symbol
 symbol_conversion #(
-    .NUM_TICKERS(2),
-    .PTICKERS("GOOGAPPL")
+    .NUM_TICKERS(5),
+    .PTICKERS("AAPLMSFTGOOGAMZNNVDA")
 ) sc (
     .ticker(),
     .symbol(), .valid()
