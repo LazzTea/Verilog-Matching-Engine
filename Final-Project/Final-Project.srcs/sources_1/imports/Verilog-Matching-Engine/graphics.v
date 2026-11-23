@@ -79,6 +79,10 @@ module graphics #(
     parameter DEPTH_PLOT_RIGHT = DEPTH_AXIS_RIGHT - 1;
     parameter DEPTH_PLOT_TOP = DEPTH_AXIS_TOP + GRAPH_AXIS_WIDTH;
     parameter DEPTH_PLOT_BOTTOM = DEPTH_AXIS_BOTTOM - GRAPH_AXIS_WIDTH;
+    localparam [8:0] DEPTH_PRICE_SPAN =
+        DEPTH_PLOT_RIGHT - DEPTH_PLOT_LEFT;
+    localparam [7:0] DEPTH_PLOT_HEIGHT =
+        DEPTH_PLOT_BOTTOM - DEPTH_PLOT_TOP;
 
     // Five-by-seven glyphs: each inner row case selects a scanline, MSB first.
     function [4:0] glyph_row;
@@ -539,37 +543,6 @@ module graphics #(
           y < DEPTH_AXIS_BOTTOM + GRAPH_AXIS_WIDTH) &&
          (x >= DEPTH_AXIS_LEFT && x < DEPTH_AXIS_RIGHT));
 
-    function [9:0] depth_price_x;
-        input [9:0] price;
-        input [9:0] min_price;
-        input [9:0] max_price;
-        integer price_range;
-        integer plot_span;
-        begin
-           price_range = max_price - min_price;
-           plot_span = DEPTH_PLOT_RIGHT - DEPTH_PLOT_LEFT;
-           if (price_range == 0)
-               depth_price_x = DEPTH_PLOT_LEFT + plot_span / 2;
-           else
-               depth_price_x = DEPTH_PLOT_LEFT +
-                   ((price - min_price) * plot_span) / price_range;
-        end
-    endfunction
-
-    function [9:0] depth_quantity_y;
-        input [12:0] quantity;
-        input [12:0] max_quantity;
-        integer plot_height;
-        begin
-           plot_height = DEPTH_PLOT_BOTTOM - DEPTH_PLOT_TOP;
-           if (max_quantity == 0)
-               depth_quantity_y = DEPTH_PLOT_BOTTOM;
-           else
-               depth_quantity_y = DEPTH_PLOT_BOTTOM -
-                   (quantity * plot_height) / max_quantity;
-        end
-    endfunction
-
     function [15:0] depth_to_bcd;
         input [12:0] value;
         reg [19:0] digits;
@@ -604,12 +577,17 @@ module graphics #(
     reg [12:0] depth_bid_cumulative;
     reg [12:0] depth_row_quantity;
     reg [9:0] depth_row_price;
-    reg [9:0] depth_previous_x;
-    reg [9:0] depth_current_x;
-    reg [9:0] depth_previous_y;
-    reg [9:0] depth_current_y;
-    reg [9:0] depth_line_low;
-    reg [9:0] depth_line_high;
+    reg [9:0] depth_price_range;
+    reg [8:0] depth_x_offset;
+    reg [7:0] depth_y_offset;
+    reg [18:0] depth_x_pixel_low;
+    reg [18:0] depth_x_pixel_high;
+    reg [18:0] depth_scaled_price;
+    reg [18:0] depth_previous_scaled_price;
+    reg [20:0] depth_y_pixel_low;
+    reg [20:0] depth_y_pixel_high;
+    reg [20:0] depth_scaled_quantity;
+    reg [20:0] depth_previous_scaled_quantity;
     reg depth_has_data;
     reg depth_ask_curve_pixel;
     reg depth_bid_curve_pixel;
@@ -628,9 +606,8 @@ module graphics #(
     integer depth_label_index;
     integer depth_index;
 
-    // Plot cumulative ask and bid quantities against the prices from the
-    // currently displayed order rows. The order book supplies asks ascending
-    // and bids descending, so the bid side is traversed in reverse here.
+    // Test curve segments with multiply-and-compare bounds instead of
+    // synthesizing a variable divider for every order and axis tick.
     always @(*) begin
         depth_min_price = 10'h3ff;
         depth_max_price = 10'd0;
@@ -642,12 +619,17 @@ module graphics #(
         depth_bid_cumulative = 13'd0;
         depth_row_quantity = 13'd0;
         depth_row_price = 10'd0;
-        depth_previous_x = DEPTH_PLOT_LEFT;
-        depth_current_x = DEPTH_PLOT_LEFT;
-        depth_previous_y = DEPTH_PLOT_BOTTOM;
-        depth_current_y = DEPTH_PLOT_BOTTOM;
-        depth_line_low = DEPTH_PLOT_BOTTOM;
-        depth_line_high = DEPTH_PLOT_BOTTOM;
+        depth_price_range = 10'd0;
+        depth_x_offset = 9'd0;
+        depth_y_offset = 8'd0;
+        depth_x_pixel_low = 19'd0;
+        depth_x_pixel_high = 19'd0;
+        depth_scaled_price = 19'd0;
+        depth_previous_scaled_price = 19'd0;
+        depth_y_pixel_low = 21'd0;
+        depth_y_pixel_high = 21'd0;
+        depth_scaled_quantity = 21'd0;
+        depth_previous_scaled_quantity = 21'd0;
         depth_has_data = 1'b0;
         depth_ask_curve_pixel = 1'b0;
         depth_bid_curve_pixel = 1'b0;
@@ -666,7 +648,7 @@ module graphics #(
 
         for (depth_index = 0; depth_index < LIST_ROWS;
             depth_index = depth_index + 1) begin
-           if (mock_valid[depth_index]) begin
+            if (mock_valid[depth_index]) begin
                depth_row_price = depth_prices >> (depth_index * 10);
                depth_row_quantity =
                    (depth_quantities >> (depth_index * 9)) & 9'h1ff;
@@ -683,22 +665,38 @@ module graphics #(
                else
                    depth_ask_quantity =
                        depth_ask_quantity + depth_row_quantity;
-           end
+            end
         end
         if (depth_has_data) begin
-           if (depth_min_price >= 10'd5)
+            if (depth_min_price >= 10'd5)
                depth_min_price = depth_min_price - 10'd5;
-           if (depth_max_price <= 10'd1018)
+            if (depth_max_price <= 10'd1018)
                depth_max_price = depth_max_price + 10'd5;
         end
+        depth_price_range = depth_max_price - depth_min_price;
         depth_max_quantity = depth_bid_quantity > depth_ask_quantity ?
-                             depth_bid_quantity : depth_ask_quantity;
+                            depth_bid_quantity : depth_ask_quantity;
 
-        if (depth_has_data && depth_max_quantity != 0) begin
-           // Ask depth grows as price rises: draw from best ask outward.
-           depth_previous_x = DEPTH_PLOT_LEFT;
-           depth_previous_y = DEPTH_PLOT_BOTTOM;
-           for (depth_index = 0; depth_index < ASK_ROWS;
+        if (depth_has_data && depth_max_quantity != 0 &&
+            x >= DEPTH_PLOT_LEFT && x <= DEPTH_PLOT_RIGHT &&
+            y >= DEPTH_PLOT_TOP && y <= DEPTH_PLOT_BOTTOM &&
+            depth_price_range != 0) begin
+            depth_x_offset = x - DEPTH_PLOT_LEFT;
+            depth_y_offset = DEPTH_PLOT_BOTTOM - y;
+            depth_x_pixel_low =
+               {10'd0, depth_x_offset} * depth_price_range;
+            depth_x_pixel_high =
+               depth_x_pixel_low + depth_price_range;
+            depth_y_pixel_low =
+               {13'd0, depth_y_offset} * depth_max_quantity;
+            depth_y_pixel_high =
+               depth_y_pixel_low + depth_max_quantity;
+
+            // Ask curve begins at the left baseline and accumulates outward.
+            depth_ask_cumulative = 13'd0;
+            depth_previous_scaled_price = 19'd0;
+            depth_previous_scaled_quantity = 21'd0;
+            for (depth_index = 0; depth_index < ASK_ROWS;
                 depth_index = depth_index + 1) begin
                if (mock_valid[depth_index] &&
                    !mock_is_bid[depth_index]) begin
@@ -707,103 +705,104 @@ module graphics #(
                        (depth_quantities >> (depth_index * 9)) & 9'h1ff;
                    depth_ask_cumulative =
                        depth_ask_cumulative + depth_row_quantity;
-                   depth_current_x = depth_price_x(
-                       depth_row_price, depth_min_price, depth_max_price);
-                   depth_current_y = depth_quantity_y(
-                       depth_ask_cumulative, depth_max_quantity);
+                   depth_scaled_price =
+                       {9'd0, (depth_row_price - depth_min_price)} *
+                       DEPTH_PRICE_SPAN;
+                   depth_scaled_quantity =
+                       {8'd0, depth_ask_cumulative} * DEPTH_PLOT_HEIGHT;
 
-                   depth_line_low = depth_previous_x < depth_current_x ?
-                                    depth_previous_x : depth_current_x;
-                   depth_line_high = depth_previous_x < depth_current_x ?
-                                     depth_current_x : depth_previous_x;
-                   if (y == depth_previous_y &&
-                       x >= depth_line_low && x <= depth_line_high)
+                   if (depth_y_pixel_low <=
+                           depth_previous_scaled_quantity &&
+                       depth_previous_scaled_quantity <
+                           depth_y_pixel_high &&
+                       depth_x_pixel_high >
+                           depth_previous_scaled_price &&
+                       depth_x_pixel_low <= depth_scaled_price)
                        depth_ask_curve_pixel = 1'b1;
 
-                   depth_line_low = depth_previous_y < depth_current_y ?
-                                    depth_previous_y : depth_current_y;
-                   depth_line_high = depth_previous_y < depth_current_y ?
-                                     depth_current_y : depth_previous_y;
-                   if (x == depth_current_x &&
-                       y >= depth_line_low && y <= depth_line_high)
+                   if (depth_x_pixel_low <= depth_scaled_price &&
+                       depth_scaled_price < depth_x_pixel_high &&
+                       depth_y_pixel_high >
+                           depth_previous_scaled_quantity &&
+                       depth_y_pixel_low <= depth_scaled_quantity)
                        depth_ask_curve_pixel = 1'b1;
 
-                   depth_previous_x = depth_current_x;
-                   depth_previous_y = depth_current_y;
+                   depth_previous_scaled_price = depth_scaled_price;
+                   depth_previous_scaled_quantity = depth_scaled_quantity;
                end
-           end
-           if (depth_ask_cumulative != 0 &&
-               y == depth_previous_y &&
-               x >= depth_previous_x && x <= DEPTH_PLOT_RIGHT)
+            end
+            if (depth_ask_cumulative != 0 &&
+               depth_y_pixel_low <= depth_previous_scaled_quantity &&
+               depth_previous_scaled_quantity < depth_y_pixel_high &&
+               depth_x_pixel_high > depth_previous_scaled_price)
                depth_ask_curve_pixel = 1'b1;
 
-           // Bid depth grows from zero at the right, accumulating from the
-           // best bid toward progressively lower prices.
-           depth_bid_cumulative = 13'd0;
-           depth_previous_x = DEPTH_PLOT_RIGHT;
-           depth_previous_y = DEPTH_PLOT_BOTTOM;
-           for (depth_index = ASK_ROWS;
-                depth_index < LIST_ROWS;
+            // Bid curve begins at the right baseline and accumulates inward.
+            depth_bid_cumulative = 13'd0;
+            depth_previous_scaled_price =
+               {9'd0, depth_price_range} * DEPTH_PRICE_SPAN;
+            depth_previous_scaled_quantity = 21'd0;
+            for (depth_index = ASK_ROWS; depth_index < LIST_ROWS;
                 depth_index = depth_index + 1) begin
                if (mock_valid[depth_index] &&
                    mock_is_bid[depth_index]) begin
                    depth_row_price = depth_prices >> (depth_index * 10);
-                   depth_current_x = depth_price_x(
-                       depth_row_price, depth_min_price, depth_max_price);
-                   depth_bid_cumulative = depth_bid_cumulative +
-                       ((depth_quantities >>
-                         (depth_index * 9)) & 9'h1ff);
-                   depth_current_y = depth_quantity_y(
-                       depth_bid_cumulative, depth_max_quantity);
+                   depth_row_quantity =
+                       (depth_quantities >> (depth_index * 9)) & 9'h1ff;
+                   depth_bid_cumulative =
+                       depth_bid_cumulative + depth_row_quantity;
+                   depth_scaled_price =
+                       {9'd0, (depth_row_price - depth_min_price)} *
+                       DEPTH_PRICE_SPAN;
+                   depth_scaled_quantity =
+                       {8'd0, depth_bid_cumulative} * DEPTH_PLOT_HEIGHT;
 
-                   depth_line_low = depth_current_x < depth_previous_x ?
-                                    depth_current_x : depth_previous_x;
-                   depth_line_high = depth_current_x < depth_previous_x ?
-                                     depth_previous_x : depth_current_x;
-                   if (y == depth_previous_y &&
-                       x >= depth_line_low && x <= depth_line_high)
+                   if (depth_y_pixel_low <=
+                           depth_previous_scaled_quantity &&
+                       depth_previous_scaled_quantity <
+                           depth_y_pixel_high &&
+                       depth_x_pixel_low <=
+                           depth_previous_scaled_price &&
+                       depth_x_pixel_high > depth_scaled_price)
                        depth_bid_curve_pixel = 1'b1;
 
-                   depth_line_low = depth_previous_y < depth_current_y ?
-                                    depth_previous_y : depth_current_y;
-                   depth_line_high = depth_previous_y < depth_current_y ?
-                                     depth_current_y : depth_previous_y;
-                   if (x == depth_current_x &&
-                       y >= depth_line_low && y <= depth_line_high)
+                   if (depth_x_pixel_low <= depth_scaled_price &&
+                       depth_scaled_price < depth_x_pixel_high &&
+                       depth_y_pixel_high >
+                           depth_previous_scaled_quantity &&
+                       depth_y_pixel_low <= depth_scaled_quantity)
                        depth_bid_curve_pixel = 1'b1;
 
-                   depth_previous_x = depth_current_x;
-                   depth_previous_y = depth_current_y;
+                   depth_previous_scaled_price = depth_scaled_price;
+                   depth_previous_scaled_quantity = depth_scaled_quantity;
                end
-           end
-           if (depth_bid_cumulative != 0 &&
-               y == depth_previous_y &&
-               x >= DEPTH_PLOT_LEFT && x <= depth_previous_x)
+            end
+            if (depth_bid_cumulative != 0 &&
+               depth_y_pixel_low <= depth_previous_scaled_quantity &&
+               depth_previous_scaled_quantity < depth_y_pixel_high &&
+               depth_x_pixel_low <= depth_previous_scaled_price)
                depth_bid_curve_pixel = 1'b1;
+        end
 
-           // Five evenly spaced price and cumulative-quantity tick labels.
-           for (depth_label_index = 0; depth_label_index < 5;
+        if (depth_has_data && depth_max_quantity != 0) begin
+            // Tick coordinates use quarter-range steps, so no variable
+            // division is needed to place them.
+            for (depth_label_index = 0; depth_label_index < 5;
                 depth_label_index = depth_label_index + 1) begin
                depth_quantity_tick_value =
                    (depth_max_quantity * depth_label_index) / 4;
-               depth_label_tick_y = depth_quantity_y(
-                   depth_quantity_tick_value, depth_max_quantity);
+               depth_label_tick_y = DEPTH_PLOT_BOTTOM -
+                   (DEPTH_PLOT_HEIGHT * depth_label_index) / 4;
                depth_label_left = DEPTH_AXIS_LEFT - 30;
-               if (depth_min_price == depth_max_price)
-                   depth_price_tick_value = depth_min_price;
-               else
-                   depth_price_tick_value = depth_min_price +
-                       ((depth_max_price - depth_min_price) *
-                        depth_label_index) / 4;
+               depth_price_tick_value = depth_min_price +
+                   (depth_price_range * depth_label_index) / 4;
 
-               if (depth_min_price != depth_max_price ||
+               if (depth_price_range != 0 ||
                    depth_label_index == 2) begin
                    depth_label_bcd = depth_to_bcd(
                        {3'b000, depth_price_tick_value});
-                   depth_label_tick_x = depth_price_x(
-                       depth_price_tick_value,
-                       depth_min_price,
-                       depth_max_price);
+                   depth_label_tick_x = DEPTH_PLOT_LEFT +
+                       (DEPTH_PRICE_SPAN * depth_label_index) / 4;
                    depth_label_left = depth_label_tick_x - 12;
                    if (x >= depth_label_left &&
                        x < depth_label_left + 24 &&
@@ -829,15 +828,15 @@ module graphics #(
 
                depth_label_bcd = depth_to_bcd(
                    depth_quantity_tick_value);
-               depth_label_tick_y = depth_quantity_y(
-                   depth_quantity_tick_value, depth_max_quantity);
                depth_label_left = DEPTH_AXIS_LEFT - 30;
                if (x >= depth_label_left &&
                    x < depth_label_left + 24 &&
                    y >= depth_label_tick_y - 3 &&
                    y < depth_label_tick_y + 4) begin
-                   depth_label_character_index = (x - depth_label_left) / 6;
-                   depth_label_column = (x - depth_label_left) % 6;
+                   depth_label_character_index =
+                       (x - depth_label_left) / 6;
+                   depth_label_column =
+                       (x - depth_label_left) % 6;
                    depth_label_row = y - depth_label_tick_y + 3;
                    depth_label_digit = depth_label_bcd >>
                        ((3 - depth_label_character_index) * 4);
@@ -850,7 +849,7 @@ module graphics #(
                                    depth_label_column))
                        depth_axis_label_pixel = 1'b1;
                end
-           end
+            end
         end
     end
 
