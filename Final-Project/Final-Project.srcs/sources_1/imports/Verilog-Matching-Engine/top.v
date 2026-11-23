@@ -253,7 +253,6 @@ module top (
         .qty(order_qty),
         .transaction(transaction),
         .trans_valid(transaction_valid),
-        .rest_id(),
         .rest_valid(),
         .full(),
         .request_symbol(request_symbol),
