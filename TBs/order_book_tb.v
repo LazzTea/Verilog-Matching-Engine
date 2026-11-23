@@ -1,4 +1,4 @@
-module tb();
+module tb;
 
 reg clk;
 reg rst;
@@ -94,7 +94,7 @@ initial begin
   request_num = 0;
 end
 
-always #1 clk = ~clk;
+always #5 clk = ~clk;
 
 initial begin
   new_order(

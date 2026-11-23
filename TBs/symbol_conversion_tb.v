@@ -1,4 +1,4 @@
-module TB();
+module tb;
 
 reg [3:0] symbol_in;
 wire [3:0] symbol_out;

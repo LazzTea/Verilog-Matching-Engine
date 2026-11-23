@@ -5,11 +5,14 @@ module userCtrls (
     input wire [7:0]    ch,
     input wire          valid_ch,
 
+    // Creating a new order
     output reg [31:0]   symbol,
     output reg          buy,
     output reg [9:0]    price,
     output reg [8:0]    qty,
-    output wire         valid
+
+    output wire         valid,
+    output wire         valid_i
 );
 
 // buy [String Symbol] [Price] [Quantity]
@@ -23,6 +26,7 @@ reg [9:0] r_price;
 reg [9:0] r_qty;
 
 reg valid_order = 0;
+reg valid_info = 0;
 
 reg [5:0] ptr;
 reg next;
@@ -40,6 +44,7 @@ localparam S_SP3   = 4'd6;  // OOB check + space after price
 localparam S_QTY   = 4'd7;  // Quantity, one digit per step
 localparam S_END   = 4'd8;  // Trailing input check
 localparam S_DONE  = 4'd9;  // Present result for one cycle
+localparam S_INFO  = 4'd10; // Shows graph info for a stock
 
 reg [3:0] step = S_IDLE;
 
@@ -47,6 +52,7 @@ always @(posedge clk or posedge rst) begin
     if (rst) begin
         indx        <= 0;
         valid_order <= 0;
+        valid_info  <= 0;
         step        <= S_IDLE;
     end else begin
         case (step)
@@ -63,6 +69,9 @@ always @(posedge clk or posedge rst) begin
                 else           valid_order <= 1;
 
                 step <= S_BUY;
+            end else if ((ch == 8'h0D || ch == 8'h0A) && uin[0] == "i" && indx != 0) begin
+                // View stock info
+                step <= S_INFO;
             end else if ((ch == 8'h0D || ch == 8'h0A) && indx != 0) begin
                 // Invalid First Character, Can't Be correct
                 valid_order <= 0;
@@ -202,7 +211,18 @@ always @(posedge clk or posedge rst) begin
         S_DONE: begin
             // valid is high for this one cycle if the order passed
             valid_order <= 0;
+            valid_info <= 0;
             step        <= S_IDLE;
+        end
+
+        S_INFO: begin
+            if (indx == 9 && {uin[0], uin[1], uin[2], uin[3], uin[4]} == "info ") begin
+                symbol <= {uin[5], uin[6], uin[7], uin[8]};
+                valid_info <= 1;
+            end
+
+            indx <= 0;
+            step <= S_DONE;
         end
 
         default: step <= S_IDLE;
@@ -212,6 +232,7 @@ always @(posedge clk or posedge rst) begin
 end
 
 // Only valid when parsing is complete
-assign valid = valid_order && (step == S_DONE);
+assign valid    = valid_order && (step == S_DONE);
+assign valid_i  = valid_info  && (step == S_DONE);
 
 endmodule
